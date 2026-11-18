@@ -5,5 +5,5 @@
  * Tant qu'il n'est pas rempli, l'app fonctionne sur l'appareil seulement.
  */
 window.MES_TACHES_CONFIG = {
-  googleClientId: 'A_REMPLIR.apps.googleusercontent.com',
+  googleClientId: '445873923159-cov10eo20cbq91u7id5q0q30pjdpr75o.apps.googleusercontent.com',
 };
