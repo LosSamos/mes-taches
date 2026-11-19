@@ -40,6 +40,7 @@
     calendrier: ['M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z', 'M3 10h18', 'M8 3v4', 'M16 3v4'],
     bas: ['M6 9l6 6 6-6'],
     loupe: ['M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z', 'M20 20l-4.2-4.2'],
+    note: ['M12 20h9', 'M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z'],
     engrenage: ['M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z'],
     tri: ['M7 4v16', 'M3 16l4 4 4-4', 'M14 6h7', 'M14 11h5', 'M14 16h3'],
     gauche: ['M15 6l-6 6 6 6'],
@@ -763,6 +764,7 @@
     clearInterval(minuterieVeille);
     S.projets = []; S.taches = []; S.couleurs = []; S.arch.donnees = null; S.compte.info = null;
     Agenda.vider();
+    fermerBlocNotes({ silencieux: true }); // le contenu temporaire ne survit pas au verrouillage
     $('#toasts').replaceChildren();
     await Sync.verrouiller();
     afficherDeverrouillage({ raison });
@@ -890,6 +892,7 @@
         sousLaDate,
         h('div', { class: 'actions-entete' },
           h('div', { class: 'groupe-icones', role: 'group', 'aria-label': 'Outils' },
+            h('button', { type: 'button', class: 'bouton-outil', id: 'bouton-bloc-notes', 'aria-label': 'Bloc-notes', 'aria-pressed': String(Boolean(blocNotes.el)), title: 'Bloc-notes temporaire (touche N)', onclick: () => basculerBlocNotes() }, icone('note', 17)),
             h('button', { type: 'button', class: 'bouton-outil', 'aria-label': 'Imprimer', title: 'Imprimer (réglages dans Compte)', onclick: imprimer }, icone('imprimer', 17)),
             h('button', { type: 'button', class: 'bouton-outil', 'aria-label': 'Compte et réglages', title: 'Compte et réglages', onclick: () => allerA('compte') }, icone('engrenage', 17)),
             h('button', { type: 'button', class: 'bouton-outil', 'aria-label': 'Verrouiller', title: 'Verrouiller (le mot de passe sera demandé)', onclick: () => verrouillerMaintenant('manuel') }, icone('cadenas', 17))),
@@ -2824,6 +2827,212 @@
       h('div', { class: 'droite' }, h('p', null, `Imprimé le ${fmtJourMois.format(new Date())}`), h('p', null, total)));
     window.print();
   }
+
+  /* =========================================================
+   * Bloc-notes temporaire (2.8)
+   * Une fenêtre flottante, déplaçable et redimensionnable, par-dessus la page.
+   * Son contenu n'est gardé nulle part : il disparaît à la fermeture (avec quelques secondes pour annuler)
+   * et au verrouillage. Seul ce qu'on « enregistre en tâche » est conservé.
+   * ======================================================= */
+
+  const blocNotes = { el: null, texte: '', place: null };
+  const PREF_PLACE = 'mes-taches-bloc-notes-place';
+
+  function lirePlace() {
+    try { const p = JSON.parse(lirePref(PREF_PLACE) || 'null'); if (p && p.w > 200 && p.h > 140) return p; } catch { /* rien */ }
+    return { x: Math.max(16, window.innerWidth - 460), y: 96, w: 420, h: 340 };
+  }
+  function garderPlace() { if (blocNotes.place) ecrirePref(PREF_PLACE, JSON.stringify(blocNotes.place)); }
+
+  function placer(el) {
+    const p = blocNotes.place;
+    p.w = Math.min(p.w, window.innerWidth - 16); p.h = Math.min(p.h, window.innerHeight - 16);
+    p.x = Math.min(Math.max(8, p.x), window.innerWidth - p.w - 8);
+    p.y = Math.min(Math.max(8, p.y), window.innerHeight - 60);
+    Object.assign(el.style, { left: `${p.x}px`, top: `${p.y}px`, width: `${p.w}px`, height: `${p.h}px` });
+  }
+
+  function basculerBlocNotes() {
+    if (blocNotes.el) { const z = $('.bn-texte', blocNotes.el); if (document.activeElement === z) fermerBlocNotes(); else z.focus(); return; }
+    ouvrirBlocNotes();
+  }
+
+  function majBoutonBlocNotes() { const b = $('#bouton-bloc-notes'); if (b) b.setAttribute('aria-pressed', String(Boolean(blocNotes.el))); }
+
+  function ouvrirBlocNotes(texteInitial = '') {
+    if (!S.ouvert) return;
+    if (blocNotes.el) { $('.bn-texte', blocNotes.el).focus(); return; }
+    blocNotes.place = lirePlace();
+    const zone = h('textarea', {
+      class: 'bn-texte', 'aria-label': 'Notes temporaires', spellcheck: 'true',
+      placeholder: 'Notes, idées, bouts de courriel…\nRien n’est gardé à la fermeture, sauf ce que tu enregistres en tâche.',
+    });
+    zone.value = texteInitial;
+    const compteur = h('span', { class: 'bn-compte' });
+    const majCompte = () => {
+      const t = zone.value.trim();
+      const lignes = t ? t.split(/\n+/).filter((l) => l.trim()).length : 0;
+      compteur.textContent = t ? `${lignes} ligne${lignes > 1 ? 's' : ''} · ${[...t].length} caractères` : 'Temporaire : effacé à la fermeture';
+      boutonTache.disabled = !t;
+    };
+    const boutonTache = h('button', { type: 'button', class: 'bn-bouton bn-principal', title: 'Enregistrer en tâche (Ctrl+Entrée)', onclick: () => preparerTache() }, icone('plus', 14, 2.4), h('span', null, 'Tâche'));
+    const barre = h('div', { class: 'bn-barre', title: 'Glisser pour déplacer' },
+      icone('note', 15, 2.2), h('strong', null, 'Bloc-notes'),
+      h('span', { class: 'bn-espace' }),
+      boutonTache,
+      h('button', { type: 'button', class: 'bn-bouton', 'aria-label': 'Effacer le contenu', title: 'Effacer le contenu', onclick: () => effacerBlocNotes() }, icone('corbeille', 15)),
+      h('button', { type: 'button', class: 'bn-bouton', 'aria-label': 'Fermer (le contenu disparaît)', title: 'Fermer : le contenu disparaît', onclick: () => fermerBlocNotes() }, icone('fermer', 15, 2.4)));
+    const enregistrement = h('div', { class: 'bn-enregistrer', hidden: true });
+    const el = h('div', { class: 'bloc-notes', role: 'dialog', 'aria-label': 'Bloc-notes temporaire' },
+      barre, zone, enregistrement, h('div', { class: 'bn-pied' }, compteur, h('span', { class: 'bn-coin', 'aria-hidden': 'true' })));
+    document.body.append(el);
+    blocNotes.el = el;
+    placer(el);
+
+    zone.addEventListener('input', majCompte);
+    zone.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); preparerTache(); }
+      if (e.key === 'Escape') { e.stopPropagation(); zone.blur(); }
+    });
+
+    // Déplacer par la barre de titre
+    barre.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('button') || window.innerWidth < 640) return;
+      e.preventDefault();
+      const dx = e.clientX - blocNotes.place.x, dy = e.clientY - blocNotes.place.y;
+      barre.setPointerCapture(e.pointerId);
+      el.classList.add('deplace');
+      const bouger = (ev) => { blocNotes.place.x = ev.clientX - dx; blocNotes.place.y = ev.clientY - dy; placer(el); };
+      const lacher = () => { barre.removeEventListener('pointermove', bouger); el.classList.remove('deplace'); garderPlace(); };
+      barre.addEventListener('pointermove', bouger);
+      barre.addEventListener('pointerup', lacher, { once: true });
+      barre.addEventListener('pointercancel', lacher, { once: true });
+    });
+    // Redimensionner par le coin (poignée maison : fonctionne aussi au doigt sur tablette)
+    const coin = $('.bn-coin', el);
+    coin.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      const x0 = e.clientX, y0 = e.clientY, w0 = blocNotes.place.w, h0 = blocNotes.place.h;
+      coin.setPointerCapture(e.pointerId);
+      const bouger = (ev) => { blocNotes.place.w = Math.max(260, w0 + ev.clientX - x0); blocNotes.place.h = Math.max(180, h0 + ev.clientY - y0); placer(el); };
+      const lacher = () => { coin.removeEventListener('pointermove', bouger); garderPlace(); };
+      coin.addEventListener('pointermove', bouger);
+      coin.addEventListener('pointerup', lacher, { once: true });
+      coin.addEventListener('pointercancel', lacher, { once: true });
+    });
+
+    majCompte();
+    majBoutonBlocNotes();
+    zone.focus();
+    zone.setSelectionRange(zone.value.length, zone.value.length);
+  }
+
+  function fermerBlocNotes({ silencieux = false } = {}) {
+    const el = blocNotes.el;
+    if (!el) return;
+    const texte = $('.bn-texte', el).value;
+    el.remove();
+    blocNotes.el = null;
+    majBoutonBlocNotes();
+    if (!silencieux && texte.trim()) toast('Bloc-notes fermé : contenu effacé', { annuler: () => ouvrirBlocNotes(texte), duree: 8000 });
+  }
+
+  function effacerBlocNotes() {
+    const zone = blocNotes.el && $('.bn-texte', blocNotes.el);
+    if (!zone || !zone.value.trim()) return;
+    const texte = zone.value;
+    zone.value = '';
+    zone.dispatchEvent(new Event('input'));
+    zone.focus();
+    toast('Contenu effacé', { annuler: () => { if (blocNotes.el) { const z = $('.bn-texte', blocNotes.el); z.value = texte; z.dispatchEvent(new Event('input')); } else ouvrirBlocNotes(texte); }, duree: 8000 });
+  }
+
+  /** Texte brut → texte de tâche : les astérisques restent des astérisques (pas du gras). */
+  const versTexteTache = (t) => t.replace(/\\/g, '\\\\').replace(/\*/g, '\\*').replace(/\s+/g, ' ').trim().slice(0, 2000);
+
+  function preparerTache() {
+    const el = blocNotes.el;
+    if (!el) return;
+    const zone = $('.bn-texte', el);
+    const panneau = $('.bn-enregistrer', el);
+    const debut = zone.selectionStart, fin = zone.selectionEnd;
+    const selection = fin > debut ? zone.value.slice(debut, fin) : '';
+    const source = (selection || zone.value).trim();
+    if (!source) { zone.focus(); return; }
+    const lignes = source.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+
+    const actifs = S.projets.filter((p) => p.couleur !== 'gris');
+    const dernier = lirePref('mes-taches-bloc-notes-projet');
+    const choix = h('select', { class: 'select bn-projet', 'aria-label': 'Projet' },
+      S.groupements.map((g) => {
+        const l = actifs.filter((p) => p.groupement === g);
+        return l.length ? h('optgroup', { label: g }, l.map((p) => h('option', { value: p.id, selected: p.id === dernier }, p.titre))) : null;
+      }),
+      h('option', { value: '__nouveau', selected: !actifs.some((p) => p.id === dernier) }, '+ Nouveau projet « À classer »'));
+    const parLigne = h('input', { type: 'checkbox' });
+    const apercu = h('p', { class: 'bn-apercu' });
+    const majApercu = () => {
+      apercu.textContent = parLigne.checked
+        ? `${lignes.length} tâches, une par ligne.`
+        : `« ${source.replace(/\s+/g, ' ').slice(0, 90)}${source.length > 90 ? '…' : ''} »`;
+    };
+    parLigne.addEventListener('change', majApercu);
+    majApercu();
+
+    const valider = async () => {
+      let projetId = choix.value;
+      const r = await essayer(async () => {
+        if (projetId === '__nouveau') {
+          let p = S.projets.find((x) => x.titre === 'À classer' && x.couleur !== 'gris');
+          if (!p) {
+            const rp = await api('projet_creer', { methode: 'POST', donnees: { titre: 'À classer', groupement: S.groupements[0] } });
+            p = rp.projet; S.projets.unshift(p); S.couleurs.push({ projet_id: p.id, couleur: 'blanc', le: p.cree_le });
+          }
+          projetId = p.id;
+        }
+        const textes = parLigne.checked ? lignes : [source];
+        const crees = [];
+        for (const t of textes) {
+          const rt = await api('tache_creer', { methode: 'POST', donnees: { projet_id: projetId, texte: versTexteTache(t) } });
+          crees.push(rt.tache);
+        }
+        return crees;
+      });
+      if (!r) return;
+      S.taches.push(...r);
+      ecrirePref('mes-taches-bloc-notes-projet', projetId);
+      // Ce qui est enregistré quitte le bloc-notes (la sélection, ou tout).
+      zone.value = selection ? (zone.value.slice(0, debut) + zone.value.slice(fin)).replace(/\n{3,}/g, '\n\n') : '';
+      zone.dispatchEvent(new Event('input'));
+      panneau.hidden = true; panneau.replaceChildren();
+      if (!editionActive) rendre();
+      const p = projetPar(projetId);
+      toast(`${r.length > 1 ? `${r.length} tâches ajoutées` : 'Tâche ajoutée'} dans ${p ? p.titre : 'le projet'}`, { action: { libelle: 'Voir', fn: () => { allerA('encours').then(() => allerAuProjet(projetId, r[0].id)); } } });
+      zone.focus();
+    };
+
+    panneau.replaceChildren();
+    ajouter(panneau, [
+      h('div', { class: 'bn-ligne' }, h('strong', null, selection ? 'Enregistrer la sélection dans' : 'Enregistrer dans'), choix),
+      lignes.length > 1 ? h('label', { class: 'bn-case' }, parLigne, `Une tâche par ligne (${lignes.length})`) : null,
+      apercu,
+      h('div', { class: 'bn-ligne bn-actions' },
+        h('button', { type: 'button', class: 'bouton bouton-principal bouton-petit', onclick: valider }, 'Enregistrer'),
+        h('button', { type: 'button', class: 'bouton bouton-texte bouton-petit', onclick: () => { panneau.hidden = true; panneau.replaceChildren(); zone.focus(); } }, 'Annuler')),
+      h('p', { class: 'bn-aide' }, 'Couleur, récurrence et détails pourront être ajoutés ensuite dans la tâche.')]);
+    panneau.hidden = false;
+    choix.focus();
+    panneau.onkeydown = (e) => { if (e.key === 'Enter' && e.target.tagName !== 'BUTTON') { e.preventDefault(); valider(); } if (e.key === 'Escape') { e.stopPropagation(); panneau.hidden = true; zone.focus(); } };
+  }
+
+  // Touche « N » (hors saisie) : ouvrir le bloc-notes.
+  document.addEventListener('keydown', (e) => {
+    if ((e.key !== 'n' && e.key !== 'N') || e.ctrlKey || e.metaKey || e.altKey || !S.ouvert) return;
+    if (e.target.closest?.('input, textarea, select, [contenteditable="true"], dialog')) return;
+    e.preventDefault();
+    ouvrirBlocNotes();
+  });
+  window.addEventListener('resize', () => { if (blocNotes.el) placer(blocNotes.el); });
 
   /* =========================================================
    * Rafraîchissements et démarrage
