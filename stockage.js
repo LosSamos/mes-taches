@@ -752,13 +752,13 @@
     const locales = await kv('readonly', (st) => st.getAllKeys());
     for (const k of locales || []) {
       const m = /^(img|mini):(.+)$/.exec(k);
-      if (m && supprimees[m[2]]) await effacer(k);
+      if (m && supprimees[m[2]] && Date.now() - supprimees[m[2]] > 120000) await effacer(k);
     }
     if (!E.drive.actif || !jetonValide()) return;
     await listerImagesDrive();
     for (const [cle, fid] of imagesDrive) {
       const id = cle.split(':')[0];
-      if (!supprimees[id]) continue;
+      if (!supprimees[id] || Date.now() - supprimees[id] < 120000) continue; // laisse le temps d'« Annuler »
       try { await requete('PATCH', `/drive/v3/files/${encodeURIComponent(fid)}`, { corps: { trashed: true } }); imagesDrive.delete(cle); } catch { /* on réessaiera */ }
     }
   }

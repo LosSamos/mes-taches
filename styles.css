@@ -900,3 +900,27 @@ a.aj-ev-titre:hover { text-decoration: underline; }
   .onglet { padding-left: 10px; padding-right: 10px; gap: 6px; font-size: 14.5px; }
   .onglet > svg { display: none; }
 }
+
+/* ---------- Conservation des images (2.15) ---------- */
+.garder-image { position: absolute; top: 6px; left: 6px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 8px; background: rgba(255, 255, 255, .88); color: var(--encre-2); box-shadow: 0 1px 3px rgba(0, 0, 0, .18); opacity: 0; transition: opacity .15s; }
+.case-image:hover .garder-image, .garder-image:focus-visible { opacity: 1; }
+.garder-image[aria-pressed="true"] { opacity: 1; background: var(--encre); color: #fff; }
+.garder-image[aria-pressed="true"] svg { fill: currentColor; }
+.garder-image:hover { background: #fff; color: var(--encre); }
+.garder-image[aria-pressed="true"]:hover { background: #33312D; color: #fff; }
+@media (hover: none) { .garder-image { opacity: .92; } }
+.expire-image { position: absolute; left: 6px; bottom: 6px; padding: 1px 7px; border-radius: 999px; background: rgba(28, 27, 25, .66); color: #fff; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; pointer-events: none; }
+.expire-image.bientot { background: var(--erreur); }
+.case-image.en-selection .vignette { cursor: pointer; }
+.case-image.en-selection .vignette img { transition: transform .15s, opacity .15s; }
+.case-image.choisie .vignette { outline: 3px solid var(--encre); outline-offset: 2px; }
+.case-image.choisie .vignette img { transform: scale(.94); }
+.coche-image { position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 2px solid #fff; background: rgba(28, 27, 25, .35); color: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); pointer-events: none; }
+.case-image.choisie .coche-image { background: var(--encre); }
+.galerie-item .case-image { position: relative; }
+.galerie-item .retirer-image { top: 6px; right: 6px; }
+.aide-galerie { margin: 0; font-size: 12px; color: var(--texte-doux); }
+.barre-selection { position: sticky; bottom: 12px; z-index: 30; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 18px; padding: 10px 12px; border-radius: 12px; background: var(--surface); box-shadow: var(--ombre-pop); font-size: 13.5px; }
+.barre-selection .aj-lien { margin-left: 0; }
+.bouton-danger:disabled, .barre-selection .bouton:disabled { opacity: .4; cursor: default; }
+.page-images .select-galerie { flex: 0 1 220px; }

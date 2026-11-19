@@ -40,6 +40,7 @@
     calendrier: ['M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z', 'M3 10h18', 'M8 3v4', 'M16 3v4'],
     bas: ['M6 9l6 6 6-6'],
     loupe: ['M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z', 'M20 20l-4.2-4.2'],
+    signet: ['M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z'],
     image: ['M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z', 'M8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z', 'M21 15l-5-5L5 21'],
     gauche: ['M15 18l-6-6 6-6'],
     droite: ['M9 18l6-6-6-6'],
@@ -546,7 +547,9 @@
     S.vue = 'encours';
     rendre();
     demarrerVeille();
-    Sync.synchroniser().catch(() => {});
+    // On retire les vieilles images seulement après avoir reçu les changements des autres appareils
+    // (une image « conservée » ailleurs ne doit pas être retirée ici).
+    Sync.synchroniser().then(() => expirerImages()).catch(() => {});
     Agenda.demarrer().catch(() => {});
   }
 
@@ -935,7 +938,7 @@
     if (editionActive) editionActive.terminer(true);
     S.vue = vue;
     if (vue === 'archives') { rendre(); await chargerArchives(); return; }
-    if (vue === 'images') { rendre(); window.scrollTo(0, 0); return; }
+    if (vue === 'images') { S.galerie.selection = null; rendre(); window.scrollTo(0, 0); return; }
     if (vue === 'compte') { S.sauv.apercu = null; S.sauv.lu = null; S.sauv.erreur = null; S.compte.info = null; S.compte.copies = null; rendre(); window.scrollTo(0, 0); await chargerCompte(); return; }
     if (Date.now() - S.chargeLe > 60000) await essayer(charger);
     rendre();
@@ -3462,6 +3465,46 @@
     return cadre;
   }
 
+  /* ---------- Conservation : 31 jours, sauf les images « conservées » (2.15) ---------- */
+
+  const joursRestants = (im) => Noyau.JOURS_IMAGES - joursEntre(lireDate(im.cree_le), new Date());
+
+  async function expirerImages() {
+    if (!S.ouvert) return;
+    const etat = Sync.etat();
+    if (etat.driveActif && etat.statut !== 'ok' && etat.statut !== 'attente') return;
+    const r = await api('images_expirer', { methode: 'POST' });
+    if (!r.images.length) return;
+    for (const im of r.images) { const t = S.taches.find((x) => x.id === im.tache_id); if (t) t.images = Math.max(0, (t.images || 1) - 1); }
+    if (!editionActive && !pop && !document.querySelector('dialog[open]')) rendre();
+    toast(`${r.images.length} image${r.images.length > 1 ? 's' : ''} de plus de ${Noyau.JOURS_IMAGES} jours retirée${r.images.length > 1 ? 's' : ''} (corbeille du Drive : 30 jours)`, { duree: 9000 });
+  }
+
+  /** Vignette avec ses petits boutons : conserver (en haut à gauche), supprimer (en haut à droite), jours restants. */
+  function caseImage(im, { onOuvrir, apres, selection = null }) {
+    const cadre = vignette(im, { onclick: onOuvrir });
+    const garder = Boolean(im.garder);
+    const reste = joursRestants(im);
+    const enSelection = selection !== null;
+    const choisie = enSelection && selection.has(im.id);
+    if (enSelection) { cadre.setAttribute('aria-pressed', String(choisie)); cadre.title = choisie ? 'Sélectionnée' : 'Sélectionner'; }
+    return h('div', { class: 'case-image' + (choisie ? ' choisie' : '') + (enSelection ? ' en-selection' : '') },
+      cadre,
+      enSelection ? h('span', { class: 'coche-image', 'aria-hidden': 'true' }, choisie ? icone('coche', 14, 3) : null) : null,
+      !enSelection ? h('button', {
+        type: 'button', class: 'garder-image', 'aria-pressed': String(garder),
+        'aria-label': garder ? `Ne plus conserver ${im.nom}` : `Conserver ${im.nom}`,
+        title: garder ? 'Conservée : ne sera jamais retirée. Cliquer pour la rendre temporaire.' : `Retirée automatiquement dans ${Math.max(0, reste)} j. Cliquer pour la conserver.`,
+        onclick: async (e) => {
+          e.stopPropagation();
+          const r = await essayer(() => api('image_garder', { methode: 'POST', donnees: { id: im.id, garder: !garder } }));
+          if (r) { im.garder = !garder; toast(im.garder ? 'Image conservée' : `Image temporaire : retirée dans ${Math.max(0, reste)} j`); await apres?.(); }
+        },
+      }, icone('signet', 14, 2.2)) : null,
+      !garder ? h('span', { class: 'expire-image' + (reste <= 7 ? ' bientot' : ''), title: `Retirée automatiquement dans ${Math.max(0, reste)} jour${reste > 1 ? 's' : ''}` }, `${Math.max(0, reste)} j`) : null,
+      !enSelection ? h('button', { type: 'button', class: 'retirer-image', 'aria-label': `Supprimer ${im.nom}`, title: 'Supprimer l’image', onclick: (e) => { e.stopPropagation(); supprimerImage(im, apres); } }, icone('fermer', 13, 2.6)) : null);
+  }
+
   /* ---------- Bouton sur la ligne de tâche ---------- */
 
   function boutonImagesTache(t) {
@@ -3502,9 +3545,7 @@
     const entree = h('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true });
     const remplir = async () => {
       const { images } = await api('images', { donnees: { tache_id: t.id } });
-      grille.replaceChildren(...images.map((im, i) => h('div', { class: 'case-image' },
-        vignette(im, { onclick: () => ouvrirVisionneuse(images, i, { depuisTache: true, apresSuppression: remplir }) }),
-        h('button', { type: 'button', class: 'retirer-image', 'aria-label': `Supprimer ${im.nom}`, title: 'Supprimer l’image', onclick: () => supprimerImage(im, remplir) }, icone('fermer', 13, 2.6)))));
+      grille.replaceChildren(...images.map((im, i) => caseImage(im, { onOuvrir: () => ouvrirVisionneuse(images, i, { depuisTache: true, apresSuppression: remplir }), apres: remplir })));
       grille.hidden = !images.length;
     };
     const ajouter = async (fichiers) => {
@@ -3618,36 +3659,80 @@
 
   /* ---------- Onglet « Images » : la galerie ---------- */
 
-  S.galerie = { projet: '', archivees: true };
+  S.galerie = { projet: '', archivees: true, garde: 'toutes', selection: null };
   const fmtMoisAnnee = new Intl.DateTimeFormat('fr-CA', { month: 'long', year: 'numeric' });
 
   function vueImages() {
     const g = S.galerie;
-    const liste = imagesGalerie().filter((im) => (!g.projet || im.projet_id === g.projet) && (g.archivees || !im.tache_finalisee));
-    const projets = [...new Map(imagesGalerie().map((im) => [im.projet_id, im.projet_titre])).entries()].sort((a, b) => a[1].localeCompare(b[1], 'fr'));
+    const toutes = imagesGalerie();
+    const liste = toutes.filter((im) => (!g.projet || im.projet_id === g.projet) && (g.archivees || !im.tache_finalisee)
+      && (g.garde === 'toutes' || (g.garde === 'gardees' ? im.garder : g.garde === 'bientot' ? !im.garder && joursRestants(im) <= 7 : !im.garder)));
+    const projets = [...new Map(toutes.map((im) => [im.projet_id, im.projet_titre])).entries()].sort((a, b) => a[1].localeCompare(b[1], 'fr'));
     const groupes = new Map();
     for (const [i, im] of liste.entries()) {
       const cle = (im.cree_le || '').slice(0, 7);
       if (!groupes.has(cle)) groupes.set(cle, []);
       groupes.get(cle).push([i, im]);
     }
+    const sel = g.selection;
+    const basculer = (im) => { if (sel.has(im.id)) sel.delete(im.id); else sel.add(im.id); rendre(); };
+    const nbBientot = toutes.filter((im) => !im.garder && joursRestants(im) <= 7).length;
+
+    const barreSelection = sel ? h('div', { class: 'barre-selection', role: 'toolbar', 'aria-label': 'Images sélectionnées' },
+      h('span', null, sel.size ? `${sel.size} sélectionnée${sel.size > 1 ? 's' : ''}` : 'Touche les images à sélectionner'),
+      h('button', { type: 'button', class: 'aj-lien', onclick: () => { if (sel.size === liste.length) sel.clear(); else liste.forEach((im) => sel.add(im.id)); rendre(); } }, sel.size === liste.length && liste.length ? 'Aucune' : 'Tout'),
+      h('span', { class: 'bn-espace' }),
+      h('button', { type: 'button', class: 'bouton bouton-petit', disabled: !sel.size, onclick: () => garderSelection(true) }, icone('signet', 14, 2.2), 'Conserver'),
+      h('button', { type: 'button', class: 'bouton bouton-petit', disabled: !sel.size, onclick: () => garderSelection(false) }, 'Temporaires'),
+      h('button', { type: 'button', class: 'bouton bouton-petit bouton-danger', disabled: !sel.size, onclick: () => supprimerSelection() }, icone('corbeille', 14, 2.2), 'Supprimer'),
+      h('button', { type: 'button', class: 'bouton bouton-petit bouton-texte', onclick: () => { g.selection = null; rendre(); } }, 'Terminé')) : null;
+
     return h('div', { class: 'page page-images' },
       entete(),
       h('div', { class: 'filtres sans-impression' },
         h('div', { class: 'barre-filtres' },
           h('select', { class: 'select select-galerie', 'aria-label': 'Projet', onchange: (e) => { g.projet = e.currentTarget.value; rendre(); } },
             h('option', { value: '' }, 'Tous les projets'), projets.map(([id, titre]) => h('option', { value: id, selected: g.projet === id }, titre))),
-          h('label', { class: 'case-impression' }, h('input', { type: 'checkbox', checked: g.archivees, onchange: (e) => { g.archivees = e.currentTarget.checked; rendre(); } }), 'Inclure les tâches archivées'),
-          h('span', { class: 'resume-filtres' }, `${liste.length} image${liste.length > 1 ? 's' : ''}`))),
+          h('select', { class: 'select select-galerie', 'aria-label': 'Conservation', onchange: (e) => { g.garde = e.currentTarget.value; rendre(); } },
+            [['toutes', 'Toutes les images'], ['temporaires', `Temporaires (${Noyau.JOURS_IMAGES} j)`], ['bientot', `Retirées dans 7 j ou moins${nbBientot ? ` (${nbBientot})` : ''}`], ['gardees', 'Conservées']]
+              .map(([v, l]) => h('option', { value: v, selected: g.garde === v }, l))),
+          h('label', { class: 'case-impression' }, h('input', { type: 'checkbox', checked: g.archivees, onchange: (e) => { g.archivees = e.currentTarget.checked; rendre(); } }), 'Tâches archivées'),
+          h('span', { class: 'bn-espace' }),
+          liste.length && !sel ? h('button', { type: 'button', class: 'bouton bouton-petit', onclick: () => { g.selection = new Set(); rendre(); } }, 'Sélectionner') : null),
+        h('p', { class: 'aide-galerie' }, `${liste.length} image${liste.length > 1 ? 's' : ''} · les images sont retirées après ${Noyau.JOURS_IMAGES} jours, sauf celles marquées « conserver » (signet en haut à gauche).`)),
       liste.length
-        ? h('div', { class: 'galerie' }, [...groupes.entries()].map(([cle, items]) => h('section', { class: 'galerie-mois' },
+        ? h('div', { class: 'galerie' + (sel ? ' en-selection' : '') }, [...groupes.entries()].map(([cle, items]) => h('section', { class: 'galerie-mois' },
           h('h2', { class: 'galerie-titre' }, cle ? majuscule(fmtMoisAnnee.format(new Date(`${cle}-15T12:00:00`))) : 'Sans date'),
           h('div', { class: 'galerie-grille' }, items.map(([i, im]) => h('figure', { class: 'galerie-item' },
-            vignette(im, { onclick: () => ouvrirVisionneuse(liste, i) }),
+            caseImage(im, { onOuvrir: () => (sel ? basculer(im) : ouvrirVisionneuse(liste, i)), apres: async () => rendre(), selection: sel }),
             h('figcaption', null, h('span', { class: 'galerie-tache' }, texteBrut(im.tache_texte)),
               h('span', { class: 'galerie-projet' }, im.projet_titre + (im.tache_finalisee ? ' · archivée' : '')))))))))
-        : h('div', { class: 'vide' }, h('h2', null, 'Aucune image'),
-          h('p', null, 'Ajoute une image ou une capture d’écran à une tâche : icône 🖼 au survol de la tâche, ou menu ⋯ → « Ajouter une image… ».')));
+        : h('div', { class: 'vide' }, h('h2', null, toutes.length ? 'Aucune image pour ces filtres' : 'Aucune image'),
+          h('p', null, toutes.length ? 'Change le projet ou le type d’images.' : 'Ajoute une image ou une capture d’écran à une tâche : icône 🖼 au survol de la tâche, ou menu ⋯ → « Ajouter une image… ».')),
+      barreSelection);
+  }
+
+  async function garderSelection(garder) {
+    const ids = [...S.galerie.selection];
+    const r = await essayer(() => api('image_garder', { methode: 'POST', donnees: { ids, garder } }));
+    if (!r) return;
+    S.galerie.selection = null;
+    rendre();
+    toast(garder ? `${ids.length} image${ids.length > 1 ? 's' : ''} conservée${ids.length > 1 ? 's' : ''}` : `${ids.length} image${ids.length > 1 ? 's' : ''} rendue${ids.length > 1 ? 's' : ''} temporaire${ids.length > 1 ? 's' : ''}`);
+  }
+
+  async function supprimerSelection() {
+    const ids = [...S.galerie.selection];
+    const r = await essayer(() => api('images_supprimer', { methode: 'POST', donnees: { ids } }));
+    if (!r) return;
+    const majCompte = (liste, d) => { for (const im of liste) { const t = S.taches.find((x) => x.id === im.tache_id); if (t) t.images = Math.max(0, (t.images || 0) + d); } };
+    majCompte(r.images, -1);
+    S.galerie.selection = null;
+    rendre();
+    toast(`${r.images.length} image${r.images.length > 1 ? 's' : ''} supprimée${r.images.length > 1 ? 's' : ''}`, { duree: 10000, annuler: async () => {
+      const rr = await essayer(() => api('images_reinserer', { methode: 'POST', donnees: { images: r.images } }));
+      if (rr) { majCompte(r.images, 1); rendre(); }
+    } });
   }
 
   function imagesGalerie() {
@@ -3674,6 +3759,7 @@
     const jour = iso(new Date());
     if (jour !== jourAffiche) {
       jourAffiche = jour;
+      expirerImages().catch(() => {});
       if (S.vue === 'encours' && !editionActive && !pop && !document.querySelector('dialog[open]')) { await essayer(charger); rendre(); }
       Agenda.charger({ force: true }).catch(() => {});
     } else majAgenda();

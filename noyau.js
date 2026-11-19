@@ -654,6 +654,47 @@
       return { image: copie(im) };
     },
 
+    /** « Conserver » : l'image n'est jamais retirée automatiquement. */
+    image_garder(e) {
+      const ids = Array.isArray(e.ids) ? e.ids : [e.id];
+      for (const id of ids) { const im = M.images?.[id]; if (im) { im.garder = Boolean(e.garder); toucher(im); } }
+      changer();
+      return { ok: true };
+    },
+
+    /** Supprime plusieurs images ; renvoie leurs copies pour pouvoir annuler. */
+    images_supprimer(e) {
+      const copies = [];
+      for (const id of e.ids || []) { const im = M.images?.[id]; if (im) { copies.push(copie(im)); supprimerEnregistrement('images', id); } }
+      changer();
+      return { images: copies };
+    },
+
+    images_reinserer(e) {
+      let n = 0;
+      for (const im of e.images || []) {
+        if (!im || !im.id || !M.taches[im.tache_id]) continue;
+        const { maj: _m, ...r } = copie(im);
+        ajouterEnregistrement('images', r); n++;
+      }
+      changer();
+      return { n };
+    },
+
+    /** Retire les images non conservées de plus de « jours » jours (31 par défaut). */
+    images_expirer(e = {}) {
+      const jours = Math.max(1, Number(e.jours) || JOURS_IMAGES);
+      const limite = new Date(Date.now() - jours * 86400000);
+      const pad = (n) => String(n).padStart(2, '0');
+      const lim = `${limite.getFullYear()}-${pad(limite.getMonth() + 1)}-${pad(limite.getDate())} ${pad(limite.getHours())}:${pad(limite.getMinutes())}:${pad(limite.getSeconds())}`;
+      const retirees = [];
+      for (const im of Object.values(M.images || {})) {
+        if (!im.garder && im.cree_le && im.cree_le < lim) { retirees.push(copie(im)); supprimerEnregistrement('images', im.id); }
+      }
+      if (retirees.length) changer();
+      return { images: retirees };
+    },
+
     image_supprimer(e) {
       const im = M.images?.[e.id];
       if (!im) throw new ErreurNoyau('Image introuvable.');
@@ -984,6 +1025,7 @@
     return { noms: [...entrees.keys()], lire, lireOctets };
   }
 
+  const JOURS_IMAGES = 31;
   const EXT_IMAGE = { 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif' };
 
   /** lireImage(id) → Promise<Uint8Array|null> : fourni par l'app (les octets sont chiffrés sur l'appareil). */
@@ -1199,9 +1241,10 @@
    * ======================================================= */
 
   window.Noyau = {
-    VERSION_APP: '2.14.0',
+    VERSION_APP: '2.15.0',
     GROUPEMENTS, COULEURS, ErreurNoyau,
     get groupements() { return groupementsAffiches(); },
+    JOURS_IMAGES: 31,
     api,
     get modele() { return M; },
     charger(m) { M = m ? normaliser(m) : modeleVide(); compteImagesCache = null; },
