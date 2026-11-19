@@ -523,3 +523,52 @@ a.aj-ev-titre:hover { text-decoration: underline; }
   .boite-recherche { flex: 1 1 100%; }
   .select-projet { flex: 1 1 0; max-width: none; }
 }
+
+/* ---------- Réglages d'impression (2.4) ---------- */
+.choix-impression { margin: 0; padding: 0; border: 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.choix-impression legend { padding: 0; margin-bottom: 6px; font-size: 14px; font-weight: 600; }
+.segments { display: flex; flex-wrap: wrap; gap: 6px; }
+.segment { position: relative; display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; border: 1px solid var(--bordure-forte); border-radius: 10px; background: var(--surface); font-size: 14px; font-weight: 500; cursor: pointer; }
+.segment:hover { background: var(--survol); }
+.segment input { position: absolute; opacity: 0; pointer-events: none; }
+.segment.actif { background: var(--encre); border-color: var(--encre); color: #fff; font-weight: 600; }
+.segment:has(input:focus-visible) { outline: 2px solid var(--encre); outline-offset: 2px; }
+.impression-grille { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px 24px; }
+.cases-impression { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+.case-impression { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; font-size: 14px; cursor: pointer; }
+.case-impression input { width: 17px; height: 17px; accent-color: var(--encre); }
+.actions-impression { display: flex; flex-wrap: wrap; gap: 8px; }
+.imp-libelle, .imp-notes { display: none; }
+
+@media print {
+  /* Taille du texte */
+  html[data-imp-taille="petite"] body { font-size: 9.5pt; }
+  html[data-imp-taille="petite"] .tache { font-size: 9pt; }
+  html[data-imp-taille="petite"] .tuile-titre { font-size: 10pt; }
+  html[data-imp-taille="grande"] .tache { font-size: 12.5pt; }
+  html[data-imp-taille="grande"] .tuile-titre { font-size: 13.5pt; }
+  /* Mise en page */
+  html[data-imp-colonnes="1"] .tuiles { column-count: 1; }
+  /* Éléments facultatifs */
+  html[data-imp-dates="non"] .tache-date, html[data-imp-dates="non"] .arch-tache .meta:not(.fort) { display: none !important; }
+  html[data-imp-recurrences="non"] .rec { display: none !important; }
+  html[data-imp-cases="non"] .tache input[type="checkbox"] { display: none !important; }
+  /* Lignes pour notes manuscrites */
+  html[data-imp-notes="2"] .imp-notes, html[data-imp-notes="4"] .imp-notes { display: block; padding: 0 8px 6px; }
+  .imp-notes span { display: block; height: 7mm; border-bottom: 0.6pt solid #9A968D; }
+  html[data-imp-notes="2"] .imp-notes span:nth-child(n+3) { display: none; }
+
+  /* Économie d'encre : fonds blancs, trait de couleur à gauche */
+  html[data-imp-couleur="eco"] .tuile-entete.fond-couleur { background: #fff !important; box-shadow: inset 5px 0 0 var(--c); padding-left: 12px; border-bottom: 0.6pt solid #CFCBC2; }
+  html[data-imp-couleur="eco"] .tuile-entete[data-couleur="blanc"] { box-shadow: none; padding-left: 8px; }
+  html[data-imp-couleur="eco"] .tuile-entete[data-couleur$="-p"] { box-shadow: inset 5px 0 0 var(--c-bord); }
+
+  /* Noir et blanc : aucune encre de couleur, la couleur est écrite */
+  html[data-imp-couleur="nb"] .fond-couleur { background: #fff !important; }
+  html[data-imp-couleur="nb"] .tuile-entete { border-bottom: 0.6pt solid #1C1B19; }
+  html[data-imp-couleur="nb"] .imp-libelle { display: inline; font-size: 8pt; font-weight: 700; }
+  html[data-imp-couleur="nb"] .age { display: none; }
+  html[data-imp-couleur="nb"] .pastille-tache .rond, html[data-imp-couleur="nb"] .pastille-fixe .rond { background: #1C1B19; box-shadow: none; }
+  html[data-imp-couleur="nb"] .pastille-tache[data-couleur$="-p"] .rond, html[data-imp-couleur="nb"] .pastille-fixe[data-couleur$="-p"] .rond { background: #fff; box-shadow: inset 0 0 0 1.4px #1C1B19; }
+  html[data-imp-couleur="nb"] #entete-impression p, html[data-imp-couleur="nb"] .tache-date, html[data-imp-couleur="nb"] .meta { color: #1C1B19; }
+}

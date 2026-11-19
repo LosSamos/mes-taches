@@ -863,6 +863,7 @@
   function rendre() {
     if (!S.ouvert) return;
     fermerPopover();
+    appliquerImpression();
     let page;
     if (S.vue === 'archives') page = vueArchives();
     else if (S.vue === 'compte') page = vueCompte();
@@ -1279,11 +1280,13 @@
         titre,
         h('span', { class: 'tuile-meta' },
           h('button', { type: 'button', class: 'etiquette', 'aria-haspopup': 'menu', 'aria-expanded': 'false', title: 'Changer le groupement', onclick: (e) => menuGroupement(e.currentTarget, p) }, p.groupement),
+          libelleCouleurImpression(p.couleur),
           age),
         h('button', { type: 'button', class: 'bouton-couleur', 'aria-label': `Couleur : ${info.nom}. Changer la couleur`, 'aria-haspopup': 'dialog', 'aria-expanded': 'false', 'data-couleur': p.couleur, onclick: (e) => menuCouleur(e.currentTarget, p) },
           h('span', { class: 'rond' })),
         h('button', { type: 'button', class: 'bouton-menu', 'aria-label': 'Autres actions', 'aria-haspopup': 'menu', 'aria-expanded': 'false', onclick: (e) => menuProjet(e.currentTarget, p) }, icone('menu', 18))),
       h('ul', { class: 'taches' }, taches.map((t) => ligneTache(t))),
+      h('div', { class: 'imp-notes', 'aria-hidden': 'true' }, [1, 2, 3, 4].map(() => h('span'))),
       h('button', { type: 'button', class: 'ajouter', onclick: () => ouvrirAjout(p.id) }, icone('plus', 14), 'Ajouter une tâche'));
 
     if (S.ajoutEnCours === p.id) apresRenduFile.push(() => ouvrirAjout(p.id));
@@ -1309,6 +1312,14 @@
       texte, rec,
       h('span', { class: 'tache-date', title: `Créée le ${dateLongue(cree)}` }, dateCourte(cree)));
     return li;
+  }
+
+  /** Couleur écrite en toutes lettres, visible seulement à l'impression noir et blanc. */
+  function libelleCouleurImpression(c) {
+    const info = COULEURS[c];
+    if (!info || c === 'blanc') return null;
+    const groupe = { urgent: 'Urgent', aprevoir: 'À prévoir', complete: 'Complété' }[info.groupe];
+    return h('span', { class: 'imp-libelle', 'aria-hidden': 'true' }, `${groupe} · ${info.nom}`);
   }
 
   function pastilleTache(t) {
@@ -1854,6 +1865,7 @@
         h('div', { class: 'tuile-entete fond-couleur', 'data-couleur': p.couleur },
           h('h2', { class: 'tuile-titre' }, p.titre),
           h('span', { class: 'etiquette' }, p.groupement),
+          libelleCouleurImpression(p.couleur),
           p.archive_le && h('span', { class: 'age' }, 'projet archivé')),
         h('ul', { class: 'taches' }, taches.map((t) => {
           const texte = h('span', { class: 'tache-texte' });
@@ -1930,6 +1942,7 @@
       h('header', null, h('h1', { class: 'titre-page' }, 'Compte'), h('p', { class: 'sous-titre' }, `Mes tâches · version ${Noyau.VERSION_APP}`)),
       h('div', { class: 'colonnes' }, carteDrive(), carteSecurite()),
       h('div', { class: 'colonnes' }, carteVeille(), carteCopies()),
+      carteImpression(),
       h('h2', { class: 'titre-section' }, 'Sauvegarde en fichier .zip'),
       h('div', { class: 'colonnes' }, carteExport(info), carteImport(info)),
       h('div', { class: 'colonnes' }, carteInstaller(), carteAppareil()),
@@ -2074,6 +2087,65 @@
   }
 
   /* ---------- Mise en veille ---------- */
+
+  /* ---------- Impression ---------- */
+
+  const IMPRESSION_DEFAUT = { imp_couleur: 'couleur', imp_colonnes: '2', imp_taille: 'normale', imp_dates: true, imp_recurrences: true, imp_cases: true, imp_notes: '0' };
+
+  function reglagesImpression() {
+    const r = Noyau.reglages();
+    const o = {};
+    for (const [k, v] of Object.entries(IMPRESSION_DEFAUT)) o[k] = r[k] === undefined ? v : r[k];
+    return o;
+  }
+
+  /** Les choix d'impression deviennent des attributs sur <html>, lus par la feuille de style d'impression. */
+  function appliquerImpression() {
+    const o = reglagesImpression();
+    const d = document.documentElement.dataset;
+    d.impCouleur = o.imp_couleur;
+    d.impColonnes = o.imp_colonnes;
+    d.impTaille = o.imp_taille;
+    d.impDates = o.imp_dates ? 'oui' : 'non';
+    d.impRecurrences = o.imp_recurrences ? 'oui' : 'non';
+    d.impCases = o.imp_cases ? 'oui' : 'non';
+    d.impNotes = o.imp_notes;
+  }
+  window.addEventListener('beforeprint', () => { if (S.ouvert) appliquerImpression(); });
+
+  function carteImpression() {
+    const o = reglagesImpression();
+    const changer = (cle, valeur) => { Noyau.changerReglages({ [cle]: valeur }); appliquerImpression(); rendre(); };
+    const groupeChoix = (nom, libelle, cle, choix) => h('fieldset', { class: 'choix-impression' },
+      h('legend', null, libelle),
+      h('div', { class: 'segments' }, choix.map(([v, l, aide]) => h('label', { class: 'segment' + (String(o[cle]) === v ? ' actif' : ''), title: aide || null },
+        h('input', { type: 'radio', name: nom, value: v, checked: String(o[cle]) === v, onchange: () => changer(cle, v) }), l))));
+    const caseACocher = (cle, libelle) => h('label', { class: 'case-impression' },
+      h('input', { type: 'checkbox', checked: Boolean(o[cle]), onchange: (e) => changer(cle, e.currentTarget.checked) }), libelle);
+
+    const aides = {
+      couleur: 'En-têtes de projet colorés et pastilles, comme à l’écran.',
+      eco: 'Fonds blancs : seul un mince trait de couleur à gauche du projet et les pastilles restent. Beaucoup moins d’encre.',
+      nb: 'Aucune encre de couleur. La couleur est écrite en toutes lettres (ex. « Urgent · rouge ») ; pastilles : ● vive, ○ pastel.',
+    };
+    return h('section', { class: 'carte carte-impression', 'aria-labelledby': 't-impression' },
+      h('h2', { id: 't-impression' }, h('span', { class: 'pastille-icone' }, icone('imprimer', 18)), 'Impression'),
+      groupeChoix('imp-couleur', 'Couleurs', 'imp_couleur', [['couleur', 'Couleurs'], ['eco', 'Économie d’encre'], ['nb', 'Noir et blanc']]),
+      h('p', { class: 'aide' }, aides[o.imp_couleur] || aides.couleur),
+      h('div', { class: 'impression-grille' },
+        groupeChoix('imp-colonnes', 'Mise en page', 'imp_colonnes', [['2', '2 colonnes'], ['1', '1 colonne']]),
+        groupeChoix('imp-taille', 'Taille du texte', 'imp_taille', [['petite', 'Petite'], ['normale', 'Normale'], ['grande', 'Grande']]),
+        groupeChoix('imp-notes', 'Lignes pour notes sous chaque projet', 'imp_notes', [['0', 'Aucune'], ['2', '2'], ['4', '4']])),
+      h('fieldset', { class: 'choix-impression' }, h('legend', null, 'Afficher'),
+        h('div', { class: 'cases-impression' },
+          caseACocher('imp_cases', 'Cases à cocher'),
+          caseACocher('imp_dates', 'Dates de création'),
+          caseACocher('imp_recurrences', 'Récurrences'))),
+      h('div', { class: 'actions-impression' },
+        h('button', { type: 'button', class: 'bouton bouton-principal', onclick: () => { allerA('encours').then(imprimer); } }, icone('imprimer', 16), 'Imprimer « En cours »'),
+        h('button', { type: 'button', class: 'bouton', onclick: () => { allerA('archives').then(() => setTimeout(imprimer, 300)); } }, 'Imprimer les archives')),
+      h('p', { class: 'aide' }, 'L’impression reprend les filtres affichés (projet, recherche, groupement, dates, couleurs). Ces choix suivent tes appareils. Dans la fenêtre d’impression, « Enregistrer en PDF » crée un fichier.'));
+  }
 
   function carteVeille() {
     const actuel = Number(Noyau.reglages().veille_minutes) || 0;
@@ -2342,6 +2414,7 @@
    * ======================================================= */
 
   function imprimer() {
+    appliquerImpression();
     const zone = $('#entete-impression');
     let sousTitre, total;
     if (S.vue === 'archives') {

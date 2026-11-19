@@ -64,6 +64,7 @@ L'agenda est lu seulement, jamais modifié. Les rendez-vous restent en mémoire 
 - **Rechercher / choisir un projet :** zone de recherche (nom des projets et texte des tâches, sans tenir compte des accents ni des majuscules ; Échap pour effacer) et menu « Tous les projets » pour n'en afficher qu'un.
 - **Couleur d'une tâche :** pastille devant le texte (clic pour choisir : urgent, à prévoir ou aucune). Le projet garde sa propre couleur. Les filtres de couleur prennent la couleur de la tâche, ou celle de son projet si la tâche n'en a pas.
 - **Aujourd'hui :** à gauche sur grand écran, sous la date sur téléphone (repliable). Rendez-vous du jour (Google Agenda), tâches répétées revenues aujourd'hui (cochables), projets urgents (un clic mène au projet).
+- **Impression (dans Compte) :** couleurs, économie d'encre (fonds blancs, trait de couleur) ou noir et blanc (couleur écrite en toutes lettres) ; 1 ou 2 colonnes ; taille du texte ; lignes pour notes ; cases, dates et récurrences à afficher ou non. Les choix suivent les appareils.
 - **Compte :** mot de passe, nouvelle clé de récupération, mise en veille, Google Drive, copies, export et import .zip, effacement de l'appareil.
 
 ## 4. Publier une nouvelle version
