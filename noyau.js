@@ -94,6 +94,20 @@
     return v;
   }
 
+  /** Lien d'un projet : http(s) seulement ; « exemple.com » devient « https://exemple.com ». */
+  function lienValide(v) {
+    if (v === null || v === undefined) return null;
+    let s = String(v).trim();
+    if (!s) return null;
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(s)) s = 'https://' + s;
+    let u;
+    try { u = new URL(s); } catch { throw new ErreurNoyau('Ce lien n’est pas une adresse web valide.'); }
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') throw new ErreurNoyau('Seuls les liens web (https://…) sont acceptés.');
+    if (!u.hostname.includes('.') && u.hostname !== 'localhost') throw new ErreurNoyau('Ce lien n’est pas une adresse web valide.');
+    if (u.href.length > 2000) throw new ErreurNoyau('Ce lien est trop long.');
+    return u.href;
+  }
+
   function couleurTacheValide(v) {
     if (v === null || v === undefined || v === '') return 'blanc';
     if (!COULEURS.includes(v) || v === 'gris') throw new ErreurNoyau('Couleur de tâche inconnue.');
@@ -364,6 +378,7 @@
       const p = projetDe(e.id);
       if ('titre' in e) p.titre = titreProjet(e.titre);
       if ('groupement' in e) p.groupement = groupementValide(e.groupement);
+      if ('lien' in e) p.lien = lienValide(e.lien);
       if ('couleur' in e) {
         const c = couleurValide(e.couleur);
         if (c !== p.couleur) {
@@ -667,7 +682,7 @@
     const ids = new Set(projets.map((p) => p.id));
     return {
       projets: projets.map((p) => ({
-        uid: p.id, titre: p.titre, groupement: p.groupement, couleur: p.couleur, couleur_depuis: p.couleur_depuis,
+        uid: p.id, titre: p.titre, groupement: p.groupement, couleur: p.couleur, couleur_depuis: p.couleur_depuis, lien: p.lien || null,
         ordre: p.ordre, complete_le: p.complete_le, archive_le: p.archive_le, cree_le: p.cree_le,
       })),
       taches: taches.map((t) => ({
@@ -842,6 +857,7 @@
         couleur: COULEURS.includes(p.couleur) ? p.couleur : 'blanc',
         couleur_depuis: dateHeure(p.couleur_depuis, true) || cree, ordre: parseInt(p.ordre, 10) || 0,
         complete_le: dateHeure(p.complete_le, true), archive_le: dateHeure(p.archive_le, true), cree_le: cree,
+        lien: (() => { try { return lienValide(p.lien); } catch { return null; } })(),
       });
     }
     vus.clear();
@@ -909,7 +925,7 @@
       const existant = M.projets[p.uid];
       const champs = {
         titre: p.titre, groupement: p.groupement, couleur: p.couleur, couleur_depuis: p.couleur_depuis,
-        complete_le: p.complete_le, archive_le: p.archive_le,
+        complete_le: p.complete_le, archive_le: p.archive_le, lien: p.lien || null,
       };
       if (existant) {
         if (mode !== 'fusion') { Object.assign(existant, champs); toucher(existant); stats.projets_mis_a_jour++; }
@@ -958,7 +974,7 @@
    * ======================================================= */
 
   window.Noyau = {
-    VERSION_APP: '2.8.0',
+    VERSION_APP: '2.9.0',
     GROUPEMENTS, COULEURS, ErreurNoyau,
     api,
     get modele() { return M; },

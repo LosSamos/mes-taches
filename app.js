@@ -40,6 +40,7 @@
     calendrier: ['M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z', 'M3 10h18', 'M8 3v4', 'M16 3v4'],
     bas: ['M6 9l6 6 6-6'],
     loupe: ['M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z', 'M20 20l-4.2-4.2'],
+    lien: ['M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71', 'M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71'],
     note: ['M12 20h9', 'M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z'],
     engrenage: ['M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z'],
     tri: ['M7 4v16', 'M3 16l4 4 4-4', 'M14 6h7', 'M14 11h5', 'M14 16h3'],
@@ -1664,6 +1665,7 @@
       h('div', { class: 'tuile-entete fond-couleur', 'data-couleur': p.couleur },
         poignee,
         titre,
+        lienProjet(p),
         h('span', { class: 'tuile-meta' },
           h('button', { type: 'button', class: 'etiquette', 'aria-haspopup': 'menu', 'aria-expanded': 'false', title: 'Changer le groupement', onclick: (e) => menuGroupement(e.currentTarget, p) }, p.groupement),
           libelleCouleurImpression(p.couleur),
@@ -1698,6 +1700,59 @@
       texte, rec,
       h('span', { class: 'tache-date', title: `Créée le ${dateLongue(cree)}` }, dateCourte(cree)));
     return li;
+  }
+
+  /* ---------- Lien d'un projet (2.9) : un maillon de chaîne, jamais l'adresse entière ---------- */
+
+  function decrireLien(url) {
+    let u;
+    try { u = new URL(url); } catch { return { nom: 'Lien', hote: '' }; }
+    const hote = u.hostname.replace(/^www\./, '');
+    if (hote === 'drive.google.com') return { nom: /\/folders\//.test(u.pathname) ? 'Dossier Google Drive' : 'Fichier Google Drive', hote };
+    if (hote === 'docs.google.com') {
+      const type = u.pathname.split('/')[1];
+      return { nom: { spreadsheets: 'Google Sheets', document: 'Google Docs', presentation: 'Google Slides', forms: 'Google Forms' }[type] || 'Document Google', hote };
+    }
+    return { nom: hote, hote };
+  }
+
+  function lienProjet(p) {
+    if (!p.lien || !/^https?:\/\//i.test(p.lien)) return null;
+    const { nom } = decrireLien(p.lien);
+    return h('a', {
+      class: 'lien-projet', href: p.lien, target: '_blank', rel: 'noopener noreferrer',
+      title: `Ouvrir : ${nom}`, 'aria-label': `Ouvrir le lien du projet ${p.titre} (${nom})`,
+    }, icone('lien', 15, 2.2));
+  }
+
+  function editerLienProjet(p, ancre) {
+    const champ = h('input', { type: 'url', class: 'champ-petit champ-lien', inputmode: 'url', placeholder: 'Coller un lien : dossier Drive, site web…', value: p.lien || '', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Adresse du lien' });
+    const apercu = h('p', { class: 'lien-apercu' });
+    const majApercu = () => {
+      const v = champ.value.trim();
+      if (!v) { apercu.textContent = 'Une icône 🔗 apparaîtra à côté du nom du projet.'; return; }
+      const url = /^[a-z][a-z0-9+.-]*:/i.test(v) ? v : `https://${v}`;
+      const d = decrireLien(url);
+      apercu.textContent = d.hote ? `→ ${d.nom}` : 'Adresse à vérifier';
+    };
+    champ.addEventListener('input', majApercu);
+    majApercu();
+    const valider = async () => {
+      const v = champ.value.trim();
+      fermerPopover(true);
+      const ok = await modifierProjet(p, { lien: v || null });
+      if (ok && v && p.lien) toast(`Lien ajouté : ${decrireLien(p.lien).nom}`);
+    };
+    champ.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); valider(); } });
+    ouvrirPopover(ancre, [
+      h('div', { class: 'popover-titre' }, p.lien ? 'Modifier le lien' : 'Ajouter un lien'),
+      champ, apercu,
+      h('div', { class: 'pied-pop' },
+        p.lien ? h('button', { type: 'button', class: 'bouton bouton-texte', onclick: async () => { fermerPopover(true); await modifierProjet(p, { lien: null }); toast('Lien retiré'); } }, 'Retirer') : null,
+        h('button', { type: 'button', class: 'bouton bouton-texte', onclick: () => fermerPopover(true) }, 'Annuler'),
+        h('button', { type: 'button', class: 'bouton bouton-principal', onclick: valider }, 'Enregistrer')),
+    ], { titre: 'Lien du projet', classe: 'pop-lien' });
+    champ.focus(); champ.select();
   }
 
   /** Couleur écrite en toutes lettres, visible seulement à l'impression noir et blanc. */
@@ -1784,10 +1839,11 @@
 
   async function modifierProjet(p, champs) {
     const r = await essayer(() => api('projet_modifier', { methode: 'POST', donnees: { id: p.id, ...champs } }));
-    if (!r) return;
+    if (!r) return null;
     Object.assign(p, r.projet);
     S.couleurs = S.couleurs.filter((c) => c.projet_id !== p.id).concat(r.couleurs);
     rendre();
+    return r;
   }
 
   async function retablirProjet(p) {
@@ -1842,6 +1898,8 @@
 
   function menuProjet(ancre, p) {
     ouvrirPopover(ancre, h('div', { class: 'menu-liste', role: 'menu' },
+      h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); editerLienProjet(p, ancre); } }, icone('lien'), p.lien ? 'Modifier le lien…' : 'Ajouter un lien…'),
+      p.lien && h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); modifierProjet(p, { lien: null }); toast('Lien retiré'); } }, icone('fermer'), 'Retirer le lien'),
       h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); modifierProjet(p, { couleur: 'gris' }); } }, icone('coche'), 'Marquer comme complété'),
       h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); archiverProjet(p); } }, icone('archive'), 'Archiver le projet'),
       h('button', { type: 'button', class: 'menu-item danger', role: 'menuitem', onclick: () => { fermerPopover(); supprimerProjet(p); } }, icone('corbeille'), 'Supprimer le projet')),
@@ -2250,6 +2308,7 @@
       ? h('section', { class: 'tuiles', 'aria-label': 'Résultats' }, groupes.map(({ projet: p, taches }) => h('article', { class: 'tuile arch-groupe' },
         h('div', { class: 'tuile-entete fond-couleur', 'data-couleur': p.couleur },
           h('h2', { class: 'tuile-titre' }, p.titre),
+          lienProjet(p),
           h('span', { class: 'etiquette' }, p.groupement),
           libelleCouleurImpression(p.couleur),
           p.archive_le && h('span', { class: 'age' }, 'projet archivé')),

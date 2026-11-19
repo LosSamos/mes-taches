@@ -767,3 +767,14 @@ a.aj-ev-titre:hover { text-decoration: underline; }
   .bn-coin { display: none; }
 }
 @media print { .bloc-notes { display: none !important; } }
+
+/* ---------- Lien d'un projet (2.9) ---------- */
+.lien-projet { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin-left: -4px; border-radius: 7px; color: var(--encre); opacity: .7; }
+.lien-projet:hover { opacity: 1; background: rgba(28, 27, 25, .1); }
+.lien-projet:focus-visible { opacity: 1; }
+.tuile-titre + .lien-projet { margin-right: auto; }
+.pop-lien { width: min(400px, calc(100vw - 16px)); }
+.champ-lien { width: 100%; min-height: 40px; font-size: 14px; }
+.lien-apercu { margin: -4px 0 0; font-size: 12.5px; color: var(--texte-doux); overflow-wrap: anywhere; }
+@media print { .lien-projet { display: none !important; } }
+.tuile-entete:has(> .lien-projet) > .tuile-titre { flex: 0 1 auto; }
