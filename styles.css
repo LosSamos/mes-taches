@@ -142,7 +142,7 @@ svg { flex: none; }
 .tache { display: flex; align-items: flex-start; gap: 10px; padding: 3px 4px; border-radius: 8px; font-size: 15px; line-height: 1.55; }
 .tache:hover { background: var(--survol); }
 .tache input[type="checkbox"] { flex: none; width: 17px; height: 17px; margin: 4px 0 0; accent-color: var(--encre); cursor: pointer; }
-.tache-texte { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; border-radius: 4px; cursor: text; padding: 0 2px; }
+.tache-texte { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; border-radius: 4px; cursor: default; padding: 0 2px; }
 .tache-texte strong { font-weight: 700; }
 .tache-date { flex: none; font-size: 12px; color: var(--date); padding-top: 2px; white-space: nowrap; }
 .tache.faite .tache-texte { text-decoration: line-through; color: var(--date); }
@@ -814,3 +814,15 @@ a.aj-ev-titre:hover { text-decoration: underline; }
 .tache-place { list-style: none; border-radius: 8px; background: var(--selection); box-shadow: inset 0 0 0 1px var(--bordure-forte); }
 .tuile .ajouter { margin-left: 16px; }
 @media print { .prise-tache { display: none !important; } .tuile .taches { padding-left: 8px; } .tuile .ajouter { margin-left: 0; } }
+
+/* ---------- Menu d'une tâche (2.13) ---------- */
+.menu-tache { flex: none; width: 26px; height: 24px; margin: 0 -6px 0 -2px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--texte-doux); opacity: 0; }
+.tache:hover .menu-tache, .menu-tache:focus-visible, .menu-tache[aria-expanded="true"] { opacity: 1; }
+.menu-tache:hover { background: var(--bordure); color: var(--encre); }
+@media (hover: none) { .menu-tache { opacity: .55; } }
+.tache-texte[contenteditable="true"] { cursor: text; }
+@media print { .menu-tache { display: none !important; } }
+/* Au doigt : les boutons vides (couleur, lien, répétition) passent dans le menu ⋯, la ligne reste dégagée. */
+@media (hover: none) {
+  .tuile .pastille-tache[data-couleur="blanc"], .tuile .lien-bouton, .tuile .rec-bouton { display: none; }
+}

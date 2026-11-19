@@ -1759,9 +1759,10 @@
 
   function ligneTache(t) {
     const cree = lireDate(t.cree_le);
-    const texte = h('span', { class: 'tache-texte', title: 'Cliquer pour modifier · Ctrl+B pour le gras' });
+    const texte = h('span', { class: 'tache-texte', title: 'Double-clic pour modifier (ou menu ⋯)' });
     afficherTexte(texte, t.texte);
-    texte.addEventListener('click', () => { if (texte.contentEditable !== 'true') editerTache(t, texte); });
+    // Pas de modification sur un simple clic : double-clic voulu, ou menu ⋯ (au doigt).
+    texte.addEventListener('dblclick', (e) => { if (texte.contentEditable !== 'true') { e.preventDefault(); window.getSelection()?.removeAllRanges(); editerTache(t, texte); } });
 
     const rec = t.recurrence
       ? h('button', { type: 'button', class: 'rec', 'aria-haspopup': 'dialog', 'aria-expanded': 'false', title: 'Modifier la récurrence', onclick: (e) => menuRecurrence(e.currentTarget, t) },
@@ -1775,10 +1776,41 @@
       h('input', { type: 'checkbox', 'aria-label': `Archiver : ${texteBrut(t.texte)}`, onchange: (e) => finaliser(t, li, e.currentTarget) }),
       pastilleTache(t),
       texte, lienTache(t), rec,
-      h('span', { class: 'tache-date', title: `Créée le ${dateLongue(cree)}` }, dateCourte(cree)));
+      h('span', { class: 'tache-date', title: `Créée le ${dateLongue(cree)}` }, dateCourte(cree)),
+      h('button', { type: 'button', class: 'menu-tache', 'aria-label': `Autres actions : ${texteBrut(t.texte).slice(0, 60)}`, title: 'Modifier ou supprimer', 'aria-haspopup': 'menu', 'aria-expanded': 'false', onclick: (e) => menuTache(e.currentTarget, t, texte) }, icone('menu', 16)));
     prise.addEventListener('pointerdown', (e) => glisserTache(e, li, prise, t.projet_id));
     prise.addEventListener('keydown', (e) => tacheAuClavier(e, t));
     return li;
+  }
+
+  /* ---------- Modifier / supprimer une tâche (2.13) : jamais sur un simple clic ---------- */
+
+  function menuTache(ancre, t, texteEl) {
+    ouvrirPopover(ancre, h('div', { class: 'menu-liste', role: 'menu' },
+      h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); editerTache(t, texteEl); } }, icone('crayon'), 'Modifier le texte'),
+      h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); editerLienTache(t, ancre); } }, icone('lien'), t.lien ? 'Modifier le lien…' : 'Ajouter un lien…'),
+      h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); menuRecurrence(ancre, t); } }, icone('recurrence'), t.recurrence ? 'Modifier la répétition…' : 'Répéter…'),
+      h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); menuCouleurTache(ancre, t); } }, h('span', { class: 'coche' }, h('span', { class: 'point fond-couleur', 'data-couleur': t.couleur || 'blanc' })), 'Couleur…'),
+      h('div', { class: 'menu-separateur', role: 'separator' }),
+      h('button', { type: 'button', class: 'menu-item danger', role: 'menuitem', onclick: () => { fermerPopover(); supprimerTache(t); } }, icone('corbeille'), 'Supprimer la tâche')),
+    { titre: 'Actions de la tâche', classe: 'popover-menu' });
+  }
+
+  /** Suppression définitive (pas d'archive), avec 10 secondes pour annuler. */
+  async function supprimerTache(t) {
+    const copieTache = JSON.parse(JSON.stringify(Noyau.modele.taches[t.id] || null));
+    const r = await essayer(() => api('tache_supprimer', { methode: 'POST', donnees: { id: t.id } }));
+    if (!r) return;
+    S.taches = S.taches.filter((x) => x.id !== t.id);
+    rendre();
+    toast(`Tâche supprimée : « ${texteBrut(t.texte).slice(0, 40)}${texteBrut(t.texte).length > 40 ? '…' : ''} »`, {
+      duree: 10000,
+      annuler: async () => {
+        if (!copieTache) return;
+        const rr = await essayer(() => api('tache_reinserer', { methode: 'POST', donnees: { tache: copieTache } }));
+        if (rr) { S.taches.push(rr.tache); rendre(); toast('Tâche remise'); }
+      },
+    });
   }
 
   /* ---------- Ordre des tâches dans un projet (2.12) ---------- */

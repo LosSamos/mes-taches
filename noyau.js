@@ -519,6 +519,16 @@
       return { prochaine };
     },
 
+    /** Annule une suppression : la tâche revient telle quelle (copie gardée par l'interface). */
+    tache_reinserer(e) {
+      const t = e.tache;
+      if (!t || typeof t !== 'object' || !t.id || !M.projets[t.projet_id]) throw new ErreurNoyau('Impossible de remettre cette tâche.');
+      const { maj: _m, ...reste } = copie(t);
+      ajouterEnregistrement('taches', { ...reste, texte: texteTache(reste.texte) });
+      changer();
+      return { tache: versTache(M.taches[t.id]) };
+    },
+
     tache_restaurer(e) {
       const t = tacheDe(e.id);
       if (t.copie_uid) {
@@ -1063,7 +1073,7 @@
    * ======================================================= */
 
   window.Noyau = {
-    VERSION_APP: '2.12.0',
+    VERSION_APP: '2.13.0',
     GROUPEMENTS, COULEURS, ErreurNoyau,
     get groupements() { return groupementsAffiches(); },
     api,
