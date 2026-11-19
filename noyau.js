@@ -1063,7 +1063,7 @@
    * ======================================================= */
 
   window.Noyau = {
-    VERSION_APP: '2.11.0',
+    VERSION_APP: '2.12.0',
     GROUPEMENTS, COULEURS, ErreurNoyau,
     get groupements() { return groupementsAffiches(); },
     api,

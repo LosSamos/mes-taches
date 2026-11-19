@@ -459,7 +459,7 @@
   }
 
   const projetPar = (id) => S.projets.find((p) => p.id === id);
-  const tachesDe = (pid) => S.taches.filter((t) => t.projet_id === pid).sort((a, b) => a.ordre - b.ordre || a.id - b.id);
+  const tachesDe = (pid) => S.taches.filter((t) => t.projet_id === pid).sort((a, b) => a.ordre - b.ordre || (a.cree_le < b.cree_le ? -1 : a.cree_le > b.cree_le ? 1 : 0));
 
   /** Couleur qu'avait un projet à un moment donné (historique des couleurs). */
   function couleurA(historique, projet, quand) {
@@ -1769,12 +1769,114 @@
       : h('button', { type: 'button', class: 'rec-bouton', 'aria-label': 'Répéter cette tâche', title: 'Répéter cette tâche', 'aria-haspopup': 'dialog', 'aria-expanded': 'false', onclick: (e) => menuRecurrence(e.currentTarget, t) },
         icone('recurrence', 14, 2.2));
 
+    const prise = h('button', { type: 'button', class: 'prise-tache', 'aria-label': `Déplacer « ${texteBrut(t.texte).slice(0, 60)} » (flèches haut et bas)`, title: 'Glisser pour changer l’ordre' }, icone('poignee', 14));
     const li = h('li', { class: 'tache', 'data-id': t.id },
+      prise,
       h('input', { type: 'checkbox', 'aria-label': `Archiver : ${texteBrut(t.texte)}`, onchange: (e) => finaliser(t, li, e.currentTarget) }),
       pastilleTache(t),
       texte, lienTache(t), rec,
       h('span', { class: 'tache-date', title: `Créée le ${dateLongue(cree)}` }, dateCourte(cree)));
+    prise.addEventListener('pointerdown', (e) => glisserTache(e, li, prise, t.projet_id));
+    prise.addEventListener('keydown', (e) => tacheAuClavier(e, t));
     return li;
+  }
+
+  /* ---------- Ordre des tâches dans un projet (2.12) ---------- */
+
+  /** Enregistre l'ordre des tâches visibles ; les tâches cachées par un filtre gardent leur place. */
+  function ordonnerTaches(projetId, idsVisibles) {
+    const tous = tachesDe(projetId).map((t) => t.id);
+    const visibles = new Set(idsVisibles);
+    const file = [...idsVisibles];
+    const ordre = tous.map((id) => (visibles.has(id) ? file.shift() : id));
+    ordre.forEach((id, i) => { const t = S.taches.find((x) => x.id === id); if (t) t.ordre = i; });
+    return essayer(() => api('taches_ordonner', { methode: 'POST', donnees: { projet_id: projetId, ids: ordre } }));
+  }
+
+  function glisserTache(e, li, prise, projetId) {
+    if (e.button !== 0 || editionActive) return;
+    e.preventDefault();
+    fermerPopover();
+    const liste = li.parentElement;
+    const r = li.getBoundingClientRect();
+    const decalage = e.clientY - r.top;
+    const place = h('li', { class: 'tache-place', 'aria-hidden': 'true' });
+    place.style.height = `${r.height}px`;
+    liste.insertBefore(place, li);
+    const avant = [...liste.querySelectorAll(':scope > .tache[data-id]')].map((x) => x.dataset.id);
+    li.classList.add('en-glisse');
+    Object.assign(li.style, { width: `${r.width}px`, left: `${r.left}px`, top: `${r.top}px` });
+    document.body.classList.add('glisse-en-cours');
+    prise.setPointerCapture(e.pointerId);
+    const placer = (y) => {
+      let cible = null;
+      for (const a of liste.querySelectorAll(':scope > .tache[data-id]:not(.en-glisse)')) {
+        const ra = a.getBoundingClientRect();
+        if (y < ra.top + ra.height / 2) { cible = a; break; }
+      }
+      if (cible) { if (place.nextElementSibling !== cible) liste.insertBefore(place, cible); }
+      else {
+        const derniere = [...liste.querySelectorAll(':scope > .tache[data-id]:not(.en-glisse)')].pop();
+        if (derniere && derniere.nextElementSibling !== place) derniere.after(place);
+      }
+    };
+    const bouger = (ev) => { li.style.top = `${ev.clientY - decalage}px`; placer(ev.clientY); };
+    const finir = () => {
+      prise.removeEventListener('pointermove', bouger);
+      document.body.classList.remove('glisse-en-cours');
+      liste.insertBefore(li, place);
+      place.remove();
+      li.classList.remove('en-glisse');
+      li.style.width = li.style.left = li.style.top = '';
+      const apres = [...liste.querySelectorAll(':scope > .tache[data-id]')].map((x) => x.dataset.id);
+      if (apres.join() !== avant.join()) ordonnerTaches(projetId, apres);
+    };
+    prise.addEventListener('pointermove', bouger);
+    prise.addEventListener('pointerup', finir, { once: true });
+    prise.addEventListener('pointercancel', finir, { once: true });
+  }
+
+  function tacheAuClavier(e, t) {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    e.preventDefault();
+    const tuileEl = $(`.tuile[data-id="${CSS.escape(t.projet_id)}"]`);
+    if (!tuileEl) return;
+    const ids = [...tuileEl.querySelectorAll('.taches > .tache[data-id]')].map((x) => x.dataset.id);
+    const i = ids.indexOf(t.id), j = e.key === 'ArrowUp' ? i - 1 : i + 1;
+    if (i < 0 || j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    ordonnerTaches(t.projet_id, ids).then(() => {
+      rendre();
+      $(`.tache[data-id="${CSS.escape(t.id)}"] .prise-tache`)?.focus();
+    });
+  }
+
+  /** Tri ponctuel des tâches d'un projet : devient le nouvel ordre (on peut ensuite glisser), avec « Annuler ». */
+  function trierTachesProjet(p, mode) {
+    const taches = tachesDe(p.id);
+    const avant = taches.map((t) => t.id);
+    const rang = (t) => ({ urgent: 0, aprevoir: 1 }[COULEURS[couleurEffective(t, p)]?.groupe] ?? 2);
+    const cmp = {
+      alpha: (a, b) => texteBrut(a.texte).localeCompare(texteBrut(b.texte), 'fr', { sensitivity: 'base', numeric: true }),
+      anciennes: (a, b) => (a.cree_le < b.cree_le ? -1 : a.cree_le > b.cree_le ? 1 : 0),
+      recentes: (a, b) => (a.cree_le > b.cree_le ? -1 : a.cree_le < b.cree_le ? 1 : 0),
+      couleur: (a, b) => rang(a) - rang(b) || a.ordre - b.ordre,
+    }[mode];
+    const apres = [...taches].sort(cmp).map((t) => t.id);
+    if (apres.join() === avant.join()) { toast('Les tâches étaient déjà dans cet ordre.'); return; }
+    ordonnerTaches(p.id, apres).then(() => {
+      rendre();
+      toast('Tâches triées', { annuler: () => ordonnerTaches(p.id, avant).then(rendre) });
+    });
+  }
+
+  function menuTriTaches(ancre, p) {
+    menuChoix(ancre, 'Trier les tâches', [
+      { v: 'couleur', l: 'Urgentes d’abord (couleur)' },
+      { v: 'alpha', l: 'Ordre alphabétique' },
+      { v: 'anciennes', l: 'Plus anciennes d’abord' },
+      { v: 'recentes', l: 'Plus récentes d’abord' },
+    ], null, (v) => trierTachesProjet(p, v));
   }
 
   /* ---------- Lien d'un projet (2.9) : un maillon de chaîne, jamais l'adresse entière ---------- */
@@ -2010,6 +2112,7 @@
     ouvrirPopover(ancre, h('div', { class: 'menu-liste', role: 'menu' },
       h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); editerLienProjet(p, ancre); } }, icone('lien'), p.lien ? 'Modifier le lien…' : 'Ajouter un lien…'),
       p.lien && h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); modifierProjet(p, { lien: null }); toast('Lien retiré'); } }, icone('fermer'), 'Retirer le lien'),
+      tachesDe(p.id).length > 1 && h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); menuTriTaches(ancre, p); } }, icone('tri'), 'Trier les tâches…'),
       h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); modifierProjet(p, { couleur: 'gris' }); } }, icone('coche'), 'Marquer comme complété'),
       h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); archiverProjet(p); } }, icone('archive'), 'Archiver le projet'),
       h('button', { type: 'button', class: 'menu-item danger', role: 'menuitem', onclick: () => { fermerPopover(); supprimerProjet(p); } }, icone('corbeille'), 'Supprimer le projet')),
