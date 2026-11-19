@@ -712,3 +712,22 @@ a.aj-ev-titre:hover { text-decoration: underline; }
   .filtre, .filtre-tri { flex: none; }
   .raccourci { display: none; }
 }
+
+/* ---------- En-tête compact (2.7.1) ---------- */
+.actions-entete { align-items: center; gap: 10px; }
+.groupe-icones { display: inline-flex; align-items: center; height: 40px; padding: 2px; border: 1px solid var(--bordure-forte); border-radius: 10px; background: var(--surface); }
+.bouton-outil { width: 36px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 8px; background: transparent; color: var(--encre-2); }
+.bouton-outil:hover { background: var(--survol); color: var(--encre); }
+.bouton-outil + .bouton-outil { margin-left: 1px; }
+.bouton-nouveau { min-height: 40px; padding: 0 14px; gap: 6px; font-size: 13.5px; border-radius: 10px; }
+@media (max-width: 560px) {
+  .actions-entete { gap: 8px; }
+  .bouton-nouveau span { display: inline; }
+}
+@media (max-width: 360px) { .bouton-nouveau span { display: none; } .bouton-nouveau { width: 40px; padding: 0; } }
+@media (max-width: 1099px) {
+  /* Téléphone et tablette : les outils restent en haut, juste sous la date ; les blocs du jour viennent ensuite. */
+  .entete-haut > div:first-child { order: 1; }
+  .entete-haut > .actions-entete { order: 2; flex: 1 0 100%; justify-content: space-between; }
+  .entete-haut > .blocs-jour { order: 3; }
+}
