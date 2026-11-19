@@ -90,7 +90,7 @@
   }
 
   function groupementValide(v) {
-    if (!GROUPEMENTS.includes(v)) throw new ErreurNoyau('Groupement inconnu.');
+    if (!listeGroupements().includes(v)) throw new ErreurNoyau('Groupement inconnu.');
     return v;
   }
 
@@ -106,6 +106,31 @@
     if (!u.hostname.includes('.') && u.hostname !== 'localhost') throw new ErreurNoyau('Ce lien n’est pas une adresse web valide.');
     if (u.href.length > 2000) throw new ErreurNoyau('Ce lien est trop long.');
     return u.href;
+  }
+
+  /* ---------- Groupements : liste modifiable (gardée dans les réglages, qui suivent les appareils) ---------- */
+
+  function listeGroupements() {
+    const l = M.reglages && Array.isArray(M.reglages.groupements) ? M.reglages.groupements.filter((g) => typeof g === 'string' && g.trim()) : [];
+    return l.length ? l : GROUPEMENTS.slice();
+  }
+
+  /** Liste affichée : la liste réglée, plus tout groupement encore utilisé par un projet (ex. renommé sur un autre appareil). */
+  function groupementsAffiches() {
+    const l = listeGroupements();
+    for (const p of Object.values(M.projets)) if (p.groupement && !l.includes(p.groupement)) l.push(p.groupement);
+    return l;
+  }
+
+  function nomGroupement(v) {
+    const n = [...String(v ?? '').replace(/\s+/g, ' ').trim()].slice(0, 40).join('');
+    if (!n) throw new ErreurNoyau('Donne un nom au groupement.');
+    return n;
+  }
+
+  function enregistrerGroupements(l) {
+    M.reglages.groupements = l;
+    M.reglages.maj = horodatage();
   }
 
   function couleurTacheValide(v) {
@@ -362,7 +387,7 @@
 
     projet_creer(e) {
       const titre = titreProjet(e.titre ?? 'Nouveau projet');
-      const groupement = groupementValide(e.groupement ?? GROUPEMENTS[0]);
+      const groupement = groupementValide(e.groupement ?? listeGroupements()[0]);
       const ordres = Object.values(M.projets).map((p) => p.ordre);
       const m = maintenant();
       const p = ajouterEnregistrement('projets', {
@@ -587,6 +612,63 @@
       toucher(ec);
       changer();
       return { echeance: copie(ec) };
+    },
+
+    groupements() {
+      const compte = new Map();
+      for (const p of Object.values(M.projets)) compte.set(p.groupement, (compte.get(p.groupement) || 0) + 1);
+      return { groupements: groupementsAffiches().map((nom) => ({ nom, projets: compte.get(nom) || 0 })) };
+    },
+
+    groupement_ajouter(e) {
+      const nom = nomGroupement(e.nom);
+      const l = groupementsAffiches();
+      if (l.some((g) => g.toLowerCase() === nom.toLowerCase())) throw new ErreurNoyau('Ce groupement existe déjà.');
+      l.push(nom);
+      enregistrerGroupements(l);
+      changer();
+      return ACTIONS.groupements();
+    },
+
+    groupement_renommer(e) {
+      const ancien = String(e.ancien ?? '');
+      const nouveau = nomGroupement(e.nouveau);
+      const l = groupementsAffiches();
+      const i = l.indexOf(ancien);
+      if (i < 0) throw new ErreurNoyau('Groupement introuvable.');
+      if (nouveau !== ancien && l.some((g, j) => j !== i && g.toLowerCase() === nouveau.toLowerCase())) throw new ErreurNoyau('Ce groupement existe déjà.');
+      l[i] = nouveau;
+      for (const p of Object.values(M.projets)) if (p.groupement === ancien) { p.groupement = nouveau; toucher(p); }
+      enregistrerGroupements(l);
+      changer();
+      return ACTIONS.groupements();
+    },
+
+    /** Retire un groupement ; ses projets (archivés compris) passent dans « vers ». */
+    groupement_supprimer(e) {
+      const nom = String(e.nom ?? '');
+      const l = groupementsAffiches();
+      if (!l.includes(nom)) throw new ErreurNoyau('Groupement introuvable.');
+      if (l.length <= 1) throw new ErreurNoyau('Il faut garder au moins un groupement.');
+      const reste = l.filter((g) => g !== nom);
+      const utilises = Object.values(M.projets).filter((p) => p.groupement === nom);
+      if (utilises.length) {
+        const vers = String(e.vers ?? '');
+        if (!reste.includes(vers)) throw new ErreurNoyau('Choisis où déplacer les projets de ce groupement.');
+        for (const p of utilises) { p.groupement = vers; toucher(p); }
+      }
+      enregistrerGroupements(reste);
+      changer();
+      return ACTIONS.groupements();
+    },
+
+    groupements_ordonner(e) {
+      const l = groupementsAffiches();
+      const voulu = (e.liste || []).filter((g) => l.includes(g));
+      if (voulu.length !== l.length) throw new ErreurNoyau('Liste de groupements incomplète.');
+      enregistrerGroupements(voulu);
+      changer();
+      return ACTIONS.groupements();
     },
 
     sauvegarde_info() {
@@ -923,6 +1005,11 @@
     const ordres = Object.values(M.projets).map((p) => p.ordre);
     const ordreMax = ordres.length ? Math.max(...ordres) : 0;
     const nouveaux = new Set();
+    {
+      const l = groupementsAffiches();
+      const ajout = [...new Set(d.projets.map((p) => p.groupement))].filter((g) => g && !l.includes(g));
+      if (ajout.length) enregistrerGroupements([...l, ...ajout]);
+    }
     d.projets.forEach((p, i) => {
       const existant = M.projets[p.uid];
       const champs = {
@@ -976,8 +1063,9 @@
    * ======================================================= */
 
   window.Noyau = {
-    VERSION_APP: '2.10.0',
+    VERSION_APP: '2.11.0',
     GROUPEMENTS, COULEURS, ErreurNoyau,
+    get groupements() { return groupementsAffiches(); },
     api,
     get modele() { return M; },
     charger(m) { M = m ? normaliser(m) : modeleVide(); },

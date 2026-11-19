@@ -789,3 +789,15 @@ a.aj-ev-titre:hover { text-decoration: underline; }
 @media (hover: none) { .lien-modifier { opacity: .6; } .lien-bouton { opacity: .55; } }
 .arch-tache .lien-tache { margin: 0 -8px; }
 @media print { .lien-tache, .lien-modifier, .lien-bouton { display: none !important; } }
+
+/* ---------- Groupements (2.11) ---------- */
+.menu-separateur { height: 1px; margin: 4px 6px; background: var(--bordure); }
+.menu-gerer { color: var(--texte-doux); font-size: 13px; }
+.liste-groupements { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.groupement { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 0; border-top: 1px solid var(--fond); }
+.groupement:first-child { border-top: 0; }
+.groupement-nom { flex: 1 1 auto; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.groupement-actions { display: inline-flex; gap: 2px; }
+.groupement-actions .bouton-outil:disabled { opacity: .25; cursor: default; background: transparent; }
+.groupement.en-edition .champ-petit { flex: 1 1 auto; min-height: 36px; }
+#grp-nouveau { flex: 1 1 200px; min-height: 36px; }

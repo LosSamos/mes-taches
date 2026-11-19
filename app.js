@@ -41,6 +41,8 @@
     bas: ['M6 9l6 6 6-6'],
     loupe: ['M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z', 'M20 20l-4.2-4.2'],
     lien: ['M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71', 'M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71'],
+    haut: ['M6 15l6-6 6 6'],
+    crayon: ['M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z'],
     note: ['M12 20h9', 'M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z'],
     engrenage: ['M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z'],
     tri: ['M7 4v16', 'M3 16l4 4 4-4', 'M14 6h7', 'M14 11h5', 'M14 16h3'],
@@ -448,6 +450,7 @@
 
   async function charger() {
     const d = await api('donnees');
+    S.groupements = Noyau.groupements;
     S.projets = d.projets;
     S.taches = d.taches;
     S.couleurs = d.couleurs;
@@ -1377,6 +1380,74 @@
     if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   }
 
+  /* ---------- Compte : groupements (2.11) ---------- */
+
+  S.grp = { renommer: null };
+
+  async function actionGroupements(action, donnees, message) {
+    const r = await essayer(() => api(action, { methode: 'POST', donnees }));
+    if (!r) return false;
+    S.groupements = Noyau.groupements;
+    await essayer(charger);
+    if (S.filtre.groupement && !S.groupements.includes(S.filtre.groupement)) S.filtre.groupement = null;
+    rendre();
+    if (message) toast(message);
+    return true;
+  }
+
+  function carteGroupements() {
+    const compte = new Map();
+    for (const p of Object.values(Noyau.modele.projets)) compte.set(p.groupement, (compte.get(p.groupement) || 0) + 1);
+    const noms = Noyau.groupements;
+    const ajout = h('input', { id: 'grp-nouveau', type: 'text', class: 'champ-petit', placeholder: 'Nouveau groupement', maxlength: '40', autocomplete: 'off', 'aria-label': 'Nom du nouveau groupement' });
+    const ajouterGrp = async () => { if (await actionGroupements('groupement_ajouter', { nom: ajout.value }, `Groupement « ${ajout.value.trim()} » ajouté`)) $('#grp-nouveau')?.focus(); };
+    ajout.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ajouterGrp(); } });
+
+    const deplacer = (i, d) => {
+      const l = noms.slice();
+      const [g] = l.splice(i, 1);
+      l.splice(i + d, 0, g);
+      actionGroupements('groupements_ordonner', { liste: l });
+    };
+
+    return h('section', { class: 'carte', id: 'carte-groupements', 'aria-labelledby': 't-groupements' },
+      h('h2', { id: 't-groupements' }, h('span', { class: 'pastille-icone' }, icone('menu', 18)), 'Groupements'),
+      h('p', { class: 'aide' }, 'L’ordre choisi ici est celui des menus. Renommer un groupement renomme celui de ses projets ; en retirer un demande où déplacer ses projets.'),
+      h('ul', { class: 'liste-groupements' }, noms.map((g, i) => {
+        const n = compte.get(g) || 0;
+        if (S.grp.renommer === g) {
+          const champ = h('input', { type: 'text', class: 'champ-petit', value: g, maxlength: '40', 'aria-label': `Nouveau nom pour ${g}` });
+          const valider = () => { S.grp.renommer = null; if (champ.value.trim() && champ.value.trim() !== g) actionGroupements('groupement_renommer', { ancien: g, nouveau: champ.value }, 'Groupement renommé'); else rendre(); };
+          champ.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); valider(); } if (e.key === 'Escape') { e.stopPropagation(); S.grp.renommer = null; rendre(); } });
+          apresRenduFile.push(() => { champ.focus(); champ.select(); });
+          return h('li', { class: 'groupement en-edition' }, champ,
+            h('button', { type: 'button', class: 'bouton bouton-principal bouton-petit', onclick: valider }, 'OK'),
+            h('button', { type: 'button', class: 'bouton bouton-texte bouton-petit', onclick: () => { S.grp.renommer = null; rendre(); } }, 'Annuler'));
+        }
+        return h('li', { class: 'groupement' },
+          h('span', { class: 'groupement-nom' }, g),
+          h('span', { class: 'menu-compte', title: `${n} projet${n > 1 ? 's' : ''}` }, `${n} projet${n > 1 ? 's' : ''}`),
+          h('span', { class: 'groupement-actions' },
+            h('button', { type: 'button', class: 'bouton-outil', 'aria-label': `Monter ${g}`, title: 'Monter', disabled: i === 0, onclick: () => deplacer(i, -1) }, icone('haut', 15, 2.2)),
+            h('button', { type: 'button', class: 'bouton-outil', 'aria-label': `Descendre ${g}`, title: 'Descendre', disabled: i === noms.length - 1, onclick: () => deplacer(i, 1) }, icone('bas', 15, 2.2)),
+            h('button', { type: 'button', class: 'bouton-outil', 'aria-label': `Renommer ${g}`, title: 'Renommer', onclick: () => { S.grp.renommer = g; rendre(); } }, icone('crayon', 15, 2)),
+            h('button', { type: 'button', class: 'bouton-outil', 'aria-label': `Retirer ${g}`, title: 'Retirer', disabled: noms.length <= 1, onclick: () => retirerGroupement(g, n) }, icone('corbeille', 15, 2))));
+      })),
+      h('div', { class: 'pay-actions' }, ajout, h('button', { type: 'button', class: 'bouton bouton-petit', onclick: ajouterGrp }, icone('plus', 14, 2.4), 'Ajouter')));
+  }
+
+  async function retirerGroupement(g, n) {
+    if (!n) {
+      const ok = await confirmer(`Retirer « ${g} » ?`, 'Aucun projet n’utilise ce groupement.', { ok: 'Retirer', danger: true });
+      if (ok) actionGroupements('groupement_supprimer', { nom: g }, `Groupement « ${g} » retiré`);
+      return;
+    }
+    const autres = Noyau.groupements.filter((x) => x !== g);
+    const vers = await choisir(`Retirer « ${g} » ?`, `${n} projet${n > 1 ? 's' : ''} (archivés compris) ${n > 1 ? 'utilisent' : 'utilise'} ce groupement. Où ${n > 1 ? 'les' : 'le'} déplacer ?`,
+      autres.map((x) => ({ valeur: x, libelle: `Vers « ${x} »` })));
+    if (vers) actionGroupements('groupement_supprimer', { nom: g, vers }, `« ${g} » retiré ; projets déplacés vers « ${vers} »`);
+  }
+
   /* ---------- Compte : liste des paiements ---------- */
 
   S.ech = { edition: null };
@@ -1498,13 +1569,16 @@
       actif ? h('button', { type: 'button', class: 'filtre-effacer', 'aria-label': `Retirer le filtre ${nom.toLowerCase()}`, title: 'Retirer ce filtre', onclick: effacer }, icone('fermer', 12, 2.6)) : null);
   }
 
-  function menuChoix(ancre, titre, choix, actuel, appliquer) {
-    ouvrirPopover(ancre, h('div', { class: 'menu-liste menu-filtre', role: 'menu' }, choix.map((c) => h('button', {
+  function menuChoix(ancre, titre, choix, actuel, appliquer, pied = null) {
+    const items = choix.map((c) => h('button', {
       type: 'button', class: 'menu-item' + (c.n === 0 ? ' menu-vide' : ''), role: 'menuitemradio', 'aria-checked': String(c.v === actuel),
       onclick: () => { fermerPopover(true); appliquer(c.v); },
     }, h('span', { class: 'coche' }, c.v === actuel ? icone('coche', 16, 2.4) : null), c.avant || null, h('span', { class: 'menu-libelle' }, c.l),
-    c.n !== undefined ? h('span', { class: 'menu-compte' }, String(c.n)) : null))), { classe: 'popover-menu', titre, aligner: 'gauche' });
+    c.n !== undefined ? h('span', { class: 'menu-compte' }, String(c.n)) : null));
+    ouvrirPopover(ancre, h('div', { class: 'menu-liste menu-filtre', role: 'menu' }, items,
+      pied ? [h('div', { class: 'menu-separateur', role: 'separator' }), pied] : null), { classe: 'popover-menu', titre, aligner: 'gauche' });
   }
+
 
   function filtresEnCours() {
     const f = S.filtre;
@@ -1514,7 +1588,8 @@
       nom: 'Groupement', valeur: f.groupement, actif: Boolean(f.groupement),
       ouvrir: (a) => menuChoix(a, 'Groupement', [{ v: null, l: 'Tous les groupements', n: compter({ groupement: null }).taches },
         ...S.groupements.map((g) => ({ v: g, l: g, n: compter({ groupement: g, projet: null }).taches }))], f.groupement,
-      (v) => { f.groupement = v; if (v && f.projet && projetPar(f.projet)?.groupement !== v) f.projet = null; rendre(); }),
+      (v) => { f.groupement = v; if (v && f.projet && projetPar(f.projet)?.groupement !== v) f.projet = null; rendre(); },
+      h('button', { type: 'button', class: 'menu-item menu-gerer', role: 'menuitem', onclick: () => { fermerPopover(); allerACarte('carte-groupements'); } }, h('span', { class: 'coche' }, icone('engrenage', 14, 2)), h('span', { class: 'menu-libelle' }, 'Gérer les groupements…'))),
       effacer: () => { f.groupement = null; rendre(); },
     });
 
@@ -1925,7 +2000,10 @@
     ouvrirPopover(ancre, h('div', { class: 'menu-liste', role: 'menu' }, S.groupements.map((g) => h('button', {
       type: 'button', class: 'menu-item', role: 'menuitemradio', 'aria-checked': String(p.groupement === g),
       onclick: () => { fermerPopover(); if (g !== p.groupement) modifierProjet(p, { groupement: g }); },
-    }, h('span', { class: 'coche' }, p.groupement === g ? icone('coche', 16, 2.4) : null), g))), { classe: 'popover-menu', titre: 'Groupement' });
+    }, h('span', { class: 'coche' }, p.groupement === g ? icone('coche', 16, 2.4) : null), g)),
+    h('div', { class: 'menu-separateur', role: 'separator' }),
+    h('button', { type: 'button', class: 'menu-item menu-gerer', role: 'menuitem', onclick: () => { fermerPopover(); allerACarte('carte-groupements'); } }, h('span', { class: 'coche' }, icone('engrenage', 14, 2)), 'Gérer les groupements…')),
+    { classe: 'popover-menu', titre: 'Groupement' });
   }
 
   function menuProjet(ancre, p) {
@@ -2420,6 +2498,7 @@
       h('header', null, h('h1', { class: 'titre-page' }, 'Compte'), h('p', { class: 'sous-titre' }, `Mes tâches · version ${Noyau.VERSION_APP}`)),
       h('div', { class: 'colonnes' }, carteDrive(), carteSecurite()),
       h('div', { class: 'colonnes' }, carteVeille(), carteCopies()),
+      carteGroupements(),
       carteEcheances(),
       cartePaye(),
       carteImpression(),
