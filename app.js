@@ -40,6 +40,7 @@
     calendrier: ['M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z', 'M3 10h18', 'M8 3v4', 'M16 3v4'],
     bas: ['M6 9l6 6 6-6'],
     loupe: ['M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z', 'M20 20l-4.2-4.2'],
+    tri: ['M7 4v16', 'M3 16l4 4 4-4', 'M14 6h7', 'M14 11h5', 'M14 16h3'],
     gauche: ['M15 6l-6 6 6 6'],
     droite: ['M9 6l6 6-6 6'],
     recurrence: ['M17 2l4 4-4 4', 'M3 11V9a3 3 0 0 1 3-3h15', 'M7 22l-4-4 4-4', 'M21 13v2a3 3 0 0 1-3 3H3'],
@@ -944,8 +945,7 @@
   const sansAccents = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
   /** Projets et tâches visibles selon les filtres. */
-  function selection() {
-    const f = S.filtre;
+  function selection(f = S.filtre) {
     const du = f.du ? `${f.du} 00:00:00` : null;
     const au = f.du ? `${f.au || f.du} 23:59:59` : null;
     const resultat = [];
@@ -1475,45 +1475,128 @@
     });
   }
 
+  /* ---------- Barre de filtres compacte (2.7) ----------
+   * Une seule rangée : recherche, puis des menus qui affichent leur valeur et le nombre de tâches de chaque choix.
+   * Une ligne de résumé n'apparaît que lorsqu'un filtre est actif. */
+
+  /** Nombre de tâches (et de projets) si l'on appliquait ce changement de filtre. */
+  function compter(changement) {
+    const sel = selection({ ...S.filtre, ...changement }).filter((x) => x.projet.couleur !== 'gris');
+    return { taches: sel.reduce((n, x) => n + x.taches.length, 0), projets: sel.length };
+  }
+
+  function boutonFiltre({ nom, valeur, actif, icone: ic, ouvrir, effacer }) {
+    return h('div', { class: 'filtre' + (actif ? ' actif' : '') },
+      h('button', { type: 'button', class: 'filtre-ouvrir', 'aria-haspopup': 'dialog', 'aria-expanded': 'false', title: actif ? `${nom} : ${valeur}` : nom, onclick: (e) => ouvrir(e.currentTarget) },
+        ic || null, h('span', { class: 'filtre-texte' }, actif ? valeur : nom), icone('bas', 13, 2.4)),
+      actif ? h('button', { type: 'button', class: 'filtre-effacer', 'aria-label': `Retirer le filtre ${nom.toLowerCase()}`, title: 'Retirer ce filtre', onclick: effacer }, icone('fermer', 12, 2.6)) : null);
+  }
+
+  function menuChoix(ancre, titre, choix, actuel, appliquer) {
+    ouvrirPopover(ancre, h('div', { class: 'menu-liste menu-filtre', role: 'menu' }, choix.map((c) => h('button', {
+      type: 'button', class: 'menu-item' + (c.n === 0 ? ' menu-vide' : ''), role: 'menuitemradio', 'aria-checked': String(c.v === actuel),
+      onclick: () => { fermerPopover(true); appliquer(c.v); },
+    }, h('span', { class: 'coche' }, c.v === actuel ? icone('coche', 16, 2.4) : null), c.avant || null, h('span', { class: 'menu-libelle' }, c.l),
+    c.n !== undefined ? h('span', { class: 'menu-compte' }, String(c.n)) : null))), { classe: 'popover-menu', titre, aligner: 'gauche' });
+  }
+
   function filtresEnCours() {
     const f = S.filtre;
-    const libelle = plage(f.du, f.au);
-    const boutonPeriode = h('button', {
-      type: 'button', class: 'bouton bouton-periode', 'aria-haspopup': 'dialog', 'aria-expanded': 'false', 'data-actif': String(Boolean(f.du)),
-      onclick: (e) => ouvrirCalendrier(e.currentTarget, f.du, f.au, (du, au) => { f.du = du; f.au = au; rendre(); }, 'Tâches créées'),
-    }, icone('calendrier'), libelle ? `Créées : ${libelle.charAt(0).toLowerCase()}${libelle.slice(1)}` : 'Toutes les dates', icone('bas', 14, 2.2));
+    const tri = triProjets();
+
+    const groupement = boutonFiltre({
+      nom: 'Groupement', valeur: f.groupement, actif: Boolean(f.groupement),
+      ouvrir: (a) => menuChoix(a, 'Groupement', [{ v: null, l: 'Tous les groupements', n: compter({ groupement: null }).taches },
+        ...S.groupements.map((g) => ({ v: g, l: g, n: compter({ groupement: g, projet: null }).taches }))], f.groupement,
+      (v) => { f.groupement = v; if (v && f.projet && projetPar(f.projet)?.groupement !== v) f.projet = null; rendre(); }),
+      effacer: () => { f.groupement = null; rendre(); },
+    });
+
+    const choixCouleur = FILTRES_COULEUR.find((c) => c.cle === f.couleur);
+    const couleur = boutonFiltre({
+      nom: 'Couleur', valeur: choixCouleur?.libelle, actif: f.couleur !== 'toutes',
+      icone: points(f.couleur !== 'toutes' && choixCouleur.points ? choixCouleur.points : ['rouge', 'jaune-p', 'blanc']),
+      ouvrir: (a) => menuChoix(a, 'Couleur', FILTRES_COULEUR.map((c) => ({ v: c.cle, l: c.cle === 'toutes' ? 'Toutes les couleurs' : c.libelle, avant: c.points ? points(c.points) : null, n: compter({ couleur: c.cle }).taches })),
+        f.couleur, (v) => { f.couleur = v; rendre(); }),
+      effacer: () => { f.couleur = 'toutes'; rendre(); },
+    });
+
+    const libellePeriode = plage(f.du, f.au);
+    const dates = boutonFiltre({
+      nom: 'Dates', valeur: libellePeriode ? `Créées : ${libellePeriode.charAt(0).toLowerCase()}${libellePeriode.slice(1)}` : '', actif: Boolean(f.du), icone: icone('calendrier', 14, 2.2),
+      ouvrir: (a) => ouvrirCalendrier(a, f.du, f.au, (du, au) => { f.du = du; f.au = au; rendre(); }, 'Tâches créées'),
+      effacer: () => { f.du = null; f.au = null; rendre(); },
+    });
+
+    const projet = boutonFiltre({
+      nom: 'Projet', valeur: f.projet ? projetPar(f.projet)?.titre : '', actif: Boolean(f.projet),
+      ouvrir: (a) => menuProjetsFiltre(a),
+      effacer: () => { f.projet = null; rendre(); },
+    });
+
+    const libelleTri = { manuel: 'Ordre des tuiles', alpha: 'A → Z', modif: 'Récents' }[tri];
+    const boutonTri = h('button', {
+      type: 'button', class: 'filtre-tri' + (tri !== 'manuel' ? ' actif' : ''), 'aria-haspopup': 'dialog', 'aria-expanded': 'false', title: 'Trier les projets',
+      onclick: (e) => menuChoix(e.currentTarget, 'Trier les projets', TRIS.map(([v, l]) => ({ v, l: v === 'modif' ? 'Dernière modification' : l })), tri,
+        (v) => { Noyau.changerReglages({ tri_projets: v }); rendre(); }),
+    }, icone('tri', 15, 2.2), h('span', { class: 'filtre-texte' }, libelleTri));
+
+    const actif = filtreActif();
+    let resume = null;
+    if (actif) {
+      const n = compter({});
+      resume = h('div', { class: 'resume-filtres', role: 'status' },
+        h('span', null, n.taches ? `${n.taches} tâche${n.taches > 1 ? 's' : ''} dans ${n.projets} projet${n.projets > 1 ? 's' : ''}` : 'Aucune tâche ne correspond'),
+        h('button', { type: 'button', class: 'aj-lien', onclick: () => { S.filtre = filtreVide(); rendre(); } }, 'Tout effacer'));
+    }
 
     return h('div', { class: 'filtres sans-impression' },
-      rangeeRecherche(),
-      h('div', { class: 'rangee rangee-periode' },
-        boutonPeriode,
-        f.du && h('button', { type: 'button', class: 'effacer-periode', 'aria-label': 'Effacer la période', onclick: () => { f.du = null; f.au = null; rendre(); } }, icone('fermer', 14)),
-        h('span', { class: 'separateur', 'aria-hidden': 'true' }),
-        h('div', { class: 'rangee puces-defile', role: 'group', 'aria-label': 'Groupement' },
-        h('button', { type: 'button', class: 'puce', 'aria-pressed': String(!f.groupement), onclick: () => { f.groupement = null; rendre(); } }, 'Tout'),
-        S.groupements.map((g) => h('button', {
-          type: 'button', class: 'puce', 'aria-pressed': String(f.groupement === g),
-          onclick: () => {
-            f.groupement = f.groupement === g ? null : g;
-            if (f.groupement && f.projet && projetPar(f.projet)?.groupement !== f.groupement) f.projet = null;
-            rendre();
-          },
-        }, g)))),
-      h('div', { class: 'rangee puces-defile', role: 'group', 'aria-label': 'Couleur' },
-        FILTRES_COULEUR.map((c) => h('button', {
-          type: 'button', class: 'puce puce-petite', 'aria-pressed': String(f.couleur === c.cle),
-          title: c.cle !== 'toutes' ? 'Selon la couleur de chaque tâche, ou celle de son projet si la tâche n’en a pas' : null,
-          onclick: () => { f.couleur = c.cle; rendre(); },
-        }, c.points && points(c.points), c.libelle))));
+      h('div', { class: 'barre-filtres' },
+        champRecherche(),
+        h('div', { class: 'menus-filtres', role: 'group', 'aria-label': 'Filtres' }, groupement, couleur, dates, projet, boutonTri)),
+      resume);
   }
+
+  function menuProjetsFiltre(ancre) {
+    const f = S.filtre;
+    const champ = h('input', { type: 'search', class: 'champ-petit menu-recherche', placeholder: 'Trouver un projet', 'aria-label': 'Trouver un projet', autocomplete: 'off' });
+    const zone = h('div', { class: 'menu-defile' });
+    const remplir = () => {
+      const q = sansAccents(champ.value.trim());
+      const projets = S.projets.filter((p) => (!f.groupement || p.groupement === f.groupement) && (!q || sansAccents(p.titre).includes(q)));
+      const items = [];
+      if (!q) items.push(h('button', { type: 'button', class: 'menu-item', role: 'menuitemradio', 'aria-checked': String(!f.projet), onclick: () => { fermerPopover(true); f.projet = null; rendre(); } },
+        h('span', { class: 'coche' }, !f.projet ? icone('coche', 16, 2.4) : null), h('span', { class: 'menu-libelle' }, 'Tous les projets')));
+      for (const g of S.groupements) {
+        const liste = projets.filter((p) => p.groupement === g).sort((a, b) => a.titre.localeCompare(b.titre, 'fr', { numeric: true }));
+        if (!liste.length) continue;
+        items.push(h('div', { class: 'menu-groupe' }, g));
+        for (const p of liste) {
+          const n = tachesDe(p.id).length;
+          items.push(h('button', { type: 'button', class: 'menu-item', role: 'menuitemradio', 'aria-checked': String(f.projet === p.id), onclick: () => { fermerPopover(true); f.projet = p.id; rendre(); } },
+            h('span', { class: 'coche' }, f.projet === p.id ? icone('coche', 16, 2.4) : null),
+            p.couleur !== 'blanc' ? h('span', { class: 'point fond-couleur', 'data-couleur': p.couleur, 'aria-hidden': 'true' }) : h('span', { class: 'point point-vide', 'aria-hidden': 'true' }),
+            h('span', { class: 'menu-libelle' }, p.titre + (p.couleur === 'gris' ? ' (complété)' : '')), h('span', { class: 'menu-compte' }, String(n))));
+        }
+      }
+      if (!items.length) items.push(h('p', { class: 'aj-vide menu-aucun' }, 'Aucun projet.'));
+      zone.replaceChildren(...items);
+    };
+    champ.addEventListener('input', remplir);
+    champ.addEventListener('keydown', (e) => { if (e.key === 'Enter') { const b = zone.querySelector('.menu-item:not([aria-checked="true"])') || zone.querySelector('.menu-item'); if (b) { e.preventDefault(); b.click(); } } });
+    remplir();
+    ouvrirPopover(ancre, h('div', { class: 'menu-liste menu-filtre menu-projets', role: 'menu' }, S.projets.length > 6 ? champ : null, zone), { classe: 'popover-menu', titre: 'Projet', aligner: 'gauche' });
+    if (S.projets.length > 6) champ.focus();
+  }
+
 
   let minuterieRecherche = null;
 
-  function rangeeRecherche() {
+  function champRecherche() {
     const f = S.filtre;
     const champ = h('input', {
-      type: 'search', id: 'recherche', class: 'champ-recherche', placeholder: 'Rechercher un projet ou une tâche',
-      'aria-label': 'Rechercher un projet ou une tâche', autocomplete: 'off', spellcheck: 'false', value: f.texte,
+      type: 'search', id: 'recherche', class: 'champ-recherche', placeholder: 'Rechercher', enterkeyhint: 'search',
+      'aria-label': 'Rechercher un projet ou une tâche', title: 'Rechercher un projet ou une tâche (touche /)', autocomplete: 'off', spellcheck: 'false', value: f.texte,
     });
     champ.addEventListener('input', () => {
       clearTimeout(minuterieRecherche);
@@ -1527,30 +1610,21 @@
       }, 150);
     });
     champ.addEventListener('keydown', (e) => { if (e.key === 'Escape' && champ.value) { e.preventDefault(); e.stopPropagation(); f.texte = ''; rendre(); $('#recherche')?.focus(); } });
-
-    const projets = S.projets.filter((p) => !f.groupement || p.groupement === f.groupement);
-    const groupes = S.groupements.map((g) => [g, projets.filter((p) => p.groupement === g).sort((a, b) => a.titre.localeCompare(b.titre, 'fr'))]).filter(([, l]) => l.length);
-    const liste = h('select', {
-      class: 'select select-projet' + (f.projet ? ' actif' : ''), 'aria-label': 'Projet',
-      onchange: (e) => { f.projet = e.currentTarget.value || null; rendre(); },
-    },
-    h('option', { value: '' }, f.groupement ? `Tous les projets · ${f.groupement}` : 'Tous les projets'),
-    groupes.map(([g, l]) => h('optgroup', { label: g }, l.map((p) => h('option', { value: p.id, selected: f.projet === p.id }, p.titre + (p.couleur === 'gris' ? ' (complété)' : ''))))));
-
-    const tri = triProjets();
-    const choixTri = h('select', {
-      class: 'select select-tri' + (tri !== 'manuel' ? ' actif' : ''), 'aria-label': 'Trier les projets', title: 'Trier les projets',
-      onchange: (e) => { Noyau.changerReglages({ tri_projets: e.currentTarget.value }); rendre(); },
-    }, TRIS.map(([v, l]) => h('option', { value: v, selected: v === tri }, `Tri : ${l.charAt(0).toLowerCase()}${l.slice(1)}`)));
-
-    return h('div', { class: 'rangee rangee-recherche' },
-      h('div', { class: 'boite-recherche' + (f.texte ? ' remplie' : '') },
-        icone('loupe', 16, 2.2), champ,
-        f.texte && h('button', { type: 'button', class: 'effacer-recherche', 'aria-label': 'Effacer la recherche', onclick: () => { f.texte = ''; rendre(); $('#recherche')?.focus(); } }, icone('fermer', 14))),
-      liste,
-      f.projet && h('button', { type: 'button', class: 'effacer-periode', 'aria-label': 'Afficher tous les projets', title: 'Tous les projets', onclick: () => { f.projet = null; rendre(); } }, icone('fermer', 14)),
-      choixTri);
+    return h('div', { class: 'boite-recherche' + (f.texte ? ' remplie' : '') },
+      icone('loupe', 15, 2.2), champ,
+      f.texte ? h('button', { type: 'button', class: 'effacer-recherche', 'aria-label': 'Effacer la recherche', onclick: () => { f.texte = ''; rendre(); $('#recherche')?.focus(); } }, icone('fermer', 13))
+        : h('kbd', { class: 'raccourci', 'aria-hidden': 'true' }, '/'));
   }
+
+  // « / » met le curseur dans la recherche (sauf pendant une saisie).
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || !S.ouvert || S.vue !== 'encours') return;
+    const cible = e.target;
+    if (cible.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+    const champ = $('#recherche');
+    if (champ) { e.preventDefault(); champ.focus(); champ.select(); }
+  });
+
 
   function tuile(p, taches) {
     const el = h('article', { class: 'tuile' + (taches.length ? '' : ' tuile-vide'), 'data-id': p.id });

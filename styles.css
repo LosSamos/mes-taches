@@ -660,3 +660,55 @@ a.aj-ev-titre:hover { text-decoration: underline; }
 .blocs-jour .aj-ev { grid-template-columns: 3px 50px minmax(0, 1fr); }
 .blocs-jour .aj-ev-barre { grid-row: auto; }
 .blocs-jour .aj-ev-heure { padding-top: 1px; font-variant-numeric: tabular-nums; }
+
+/* ---------- Barre de filtres compacte (2.7) ---------- */
+.filtres { gap: 6px; }
+.barre-filtres { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.barre-filtres .boite-recherche { flex: 1 1 220px; min-width: 180px; }
+.barre-filtres .champ-recherche { min-height: 38px; border-radius: 9px; font-size: 14px; padding: 0 34px 0 34px; }
+.barre-filtres .boite-recherche > svg { left: 11px; }
+.barre-filtres .boite-recherche.remplie .champ-recherche { padding-left: 33px; }
+.raccourci { position: absolute; right: 9px; min-width: 18px; height: 20px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--bordure-forte); border-radius: 5px; background: var(--fond); color: var(--texte-doux); font: 600 11px/1 inherit; pointer-events: none; }
+.boite-recherche:focus-within .raccourci { display: none; }
+.menus-filtres { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; flex-wrap: wrap; }
+
+.filtre { display: inline-flex; align-items: stretch; height: 38px; border: 1px solid var(--bordure-forte); border-radius: 9px; background: var(--surface); }
+.filtre-ouvrir, .filtre-tri { display: inline-flex; align-items: center; gap: 6px; padding: 0 9px 0 11px; border: 0; border-radius: 8px; background: transparent; font-size: 13.5px; font-weight: 500; color: var(--encre); white-space: nowrap; }
+.filtre-ouvrir > svg:last-child { color: var(--texte-doux); }
+.filtre-ouvrir:hover, .filtre-tri:hover { background: var(--survol); }
+.filtre-texte { max-width: 170px; overflow: hidden; text-overflow: ellipsis; }
+.filtre.actif { background: var(--encre); border-color: var(--encre); }
+.filtre.actif .filtre-ouvrir { color: #fff; font-weight: 600; padding-right: 4px; }
+.filtre.actif .filtre-ouvrir > svg:last-child { color: rgba(255, 255, 255, .7); }
+.filtre.actif .filtre-ouvrir:hover { background: rgba(255, 255, 255, .08); }
+.filtre-effacer { display: inline-flex; align-items: center; justify-content: center; width: 28px; border: 0; border-left: 1px solid rgba(255, 255, 255, .18); border-radius: 0 8px 8px 0; background: transparent; color: #fff; }
+.filtre-effacer:hover { background: rgba(255, 255, 255, .14); }
+.filtre .points { gap: 2px; }
+.filtre-tri { height: 38px; border: 1px solid transparent; color: var(--texte-doux); }
+.filtre-tri.actif { color: var(--encre); font-weight: 600; border-color: var(--bordure-forte); background: var(--surface); }
+
+.resume-filtres { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--texte-doux); padding-left: 2px; }
+.resume-filtres .aj-lien { margin-left: 0; font-size: 12.5px; text-decoration: underline; }
+
+.menu-filtre { min-width: 240px; }
+.menu-filtre .menu-item { min-height: 36px; font-size: 13.5px; }
+.menu-filtre .menu-item.menu-vide { color: var(--texte-doux); }
+.menu-libelle { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-compte { flex: none; min-width: 22px; padding: 1px 7px; border-radius: 999px; background: var(--fond); font-size: 11.5px; font-weight: 600; color: var(--encre-2); text-align: center; font-variant-numeric: tabular-nums; }
+.menu-item.menu-vide .menu-compte { background: transparent; color: var(--trait); }
+.menu-groupe { padding: 8px 10px 2px; font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--texte-doux); }
+.menu-projets { width: 290px; }
+.menu-recherche { width: 100%; margin-bottom: 4px; }
+.menu-defile { max-height: min(60vh, 420px); overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.menu-aucun { padding: 8px 10px; }
+.menu-filtre .point, .point-vide { flex: none; width: 9px; height: 9px; border-radius: 50%; }
+.point-vide { box-shadow: inset 0 0 0 1px var(--trait); }
+
+@media (max-width: 640px) {
+  .barre-filtres { flex-wrap: wrap; }
+  .barre-filtres .boite-recherche { flex: 1 1 100%; }
+  .menus-filtres { flex: 1 1 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -14px; padding: 2px 14px; }
+  .menus-filtres::-webkit-scrollbar { display: none; }
+  .filtre, .filtre-tri { flex: none; }
+  .raccourci { display: none; }
+}
