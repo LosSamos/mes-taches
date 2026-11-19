@@ -331,9 +331,9 @@
     pop = { el, ancre, aligner };
     ancre.setAttribute('aria-expanded', 'true');
     positionner();
+    document.addEventListener('keydown', echapPop, true);
     setTimeout(() => {
       document.addEventListener('pointerdown', clicDehors, true);
-      document.addEventListener('keydown', echapPop, true);
       window.addEventListener('resize', positionner);
     });
     const premier = el.querySelector('[aria-pressed="true"], [aria-checked="true"], button, input, select');
@@ -1722,9 +1722,10 @@
     const info = COULEURS[p.couleur] || COULEURS.blanc;
 
     const manuel = triProjets() === 'manuel';
+    // Le carré de couleur du projet sert aussi de poignée pour déplacer la tuile (2.16.2).
     const poignee = manuel
-      ? h('button', { type: 'button', class: 'poignee', 'aria-label': `Déplacer « ${p.titre} » (flèches haut et bas)`, title: 'Glisser pour déplacer' }, icone('poignee', 18))
-      : h('span', { class: 'poignee poignee-inactive', title: 'Pour déplacer les tuiles, choisis « Tri : ordre des tuiles »', 'aria-hidden': 'true' }, icone('poignee', 18));
+      ? h('button', { type: 'button', class: 'poignee carre-projet fond-couleur', 'data-couleur': p.couleur, 'aria-label': `Déplacer « ${p.titre} » (flèches haut et bas)`, title: 'Glisser pour déplacer' }, icone('poignee', 18))
+      : h('span', { class: 'poignee poignee-inactive carre-projet fond-couleur', 'data-couleur': p.couleur, title: 'Pour déplacer les tuiles, choisis « Tri : ordre des tuiles »', 'aria-hidden': 'true' }, icone('poignee', 18));
     if (manuel) {
       poignee.addEventListener('pointerdown', (e) => demarrerGlisser(e, el, poignee));
       poignee.addEventListener('keydown', (e) => deplacerAuClavier(e, p.id));
@@ -1738,7 +1739,7 @@
     }
 
     el.append(
-      h('div', { class: 'tuile-entete fond-couleur', 'data-couleur': p.couleur },
+      h('div', { class: 'tuile-entete' },
         poignee,
         titre,
         lienProjet(p),
@@ -2043,8 +2044,8 @@
       h('button', { type: 'button', class: 'completes-bascule', 'aria-expanded': String(ouvert), onclick: () => { S.completesOuverts = !ouvert; rendre(); } },
         icone('bas', 16, 2.2), `Complétés · ${liste.length}`),
       ouvert && h('div', { class: 'tuiles' }, liste.map(({ projet: p, taches }) => h('article', { class: 'tuile tuile-repliee', 'data-id': p.id },
-        h('div', { class: 'tuile-entete fond-couleur', 'data-couleur': 'gris' },
-          h('span', { class: 'poignee', 'aria-hidden': 'true' }),
+        h('div', { class: 'tuile-entete' },
+          h('span', { class: 'carre-projet carre-fixe fond-couleur', 'data-couleur': 'gris', 'aria-hidden': 'true' }),
           h('h2', { class: 'tuile-titre' }, p.titre),
           h('span', { class: 'age' }, `complété le ${dateCourte(lireDate(p.complete_le || p.couleur_depuis))}${taches.length ? ` · ${taches.length} tâche${taches.length > 1 ? 's' : ''} ouverte${taches.length > 1 ? 's' : ''}` : ''}`),
           h('button', { type: 'button', class: 'bouton bouton-petit', onclick: () => retablirProjet(p) }, 'Rétablir'),
@@ -2594,7 +2595,8 @@
 
     const liste = groupes.length
       ? h('section', { class: 'tuiles', 'aria-label': 'Résultats' }, groupes.map(({ projet: p, taches }) => h('article', { class: 'tuile arch-groupe' },
-        h('div', { class: 'tuile-entete fond-couleur', 'data-couleur': p.couleur },
+        h('div', { class: 'tuile-entete' },
+          h('span', { class: 'carre-projet carre-fixe fond-couleur', 'data-couleur': p.couleur, 'aria-hidden': 'true' }),
           h('h2', { class: 'tuile-titre' }, p.titre),
           lienProjet(p),
           h('span', { class: 'etiquette' }, p.groupement),

@@ -116,9 +116,8 @@ svg { flex: none; }
 .tuile { position: relative; border-radius: var(--rayon); background: var(--surface); box-shadow: 0 0 0 1px var(--bordure), 0 1px 2px rgba(28, 27, 25, .06); }
 .tuile-entete {
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 2px 6px 2px 2px;
-  border-radius: var(--rayon) var(--rayon) 0 0; background: var(--c, #fff);
+  border-radius: var(--rayon) var(--rayon) 0 0; background: transparent; border-bottom: 1px solid var(--fond);
 }
-.tuile-entete[data-couleur="blanc"] { border-bottom: 1px solid var(--fond); }
 .tuile-repliee .tuile-entete { border-radius: var(--rayon); border-bottom: 0; }
 .poignee {
   flex: none; width: 32px; height: 40px; display: flex; align-items: center; justify-content: center;
@@ -128,7 +127,7 @@ svg { flex: none; }
 .tuile-titre { margin: 0; flex: 1 1 160px; min-width: 0; padding: 8px 4px; font-size: 16px; font-weight: 700; line-height: 1.3; border-radius: 6px; cursor: text; overflow-wrap: anywhere; }
 .tuile-meta { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .etiquette { display: inline-flex; align-items: center; min-height: 28px; font-size: 12px; font-weight: 600; padding: 0 9px; border-radius: 999px; border: 0; background: rgba(28, 27, 25, .1); }
-.tuile-entete[data-couleur="blanc"] .etiquette { background: var(--fond); }
+.tuile-entete .etiquette { background: var(--fond); }
 .etiquette:hover { background: rgba(28, 27, 25, .18); }
 .age { font-size: 12px; font-weight: 500; white-space: nowrap; }
 .bouton-couleur, .bouton-menu {
@@ -559,9 +558,6 @@ a.aj-ev-titre:hover { text-decoration: underline; }
   html[data-imp-notes="2"] .imp-notes span:nth-child(n+3) { display: none; }
 
   /* Économie d'encre : fonds blancs, trait de couleur à gauche */
-  html[data-imp-couleur="eco"] .tuile-entete.fond-couleur { background: #fff !important; box-shadow: inset 5px 0 0 var(--c); padding-left: 12px; border-bottom: 0.6pt solid #CFCBC2; }
-  html[data-imp-couleur="eco"] .tuile-entete[data-couleur="blanc"] { box-shadow: none; padding-left: 8px; }
-  html[data-imp-couleur="eco"] .tuile-entete[data-couleur$="-p"] { box-shadow: inset 5px 0 0 var(--c-bord); }
 
   /* Noir et blanc : aucune encre de couleur, la couleur est écrite */
   html[data-imp-couleur="nb"] .fond-couleur { background: #fff !important; }
@@ -989,11 +985,6 @@ a.aj-ev-titre:hover { text-decoration: underline; }
 [data-couleur="ardoise4"] { --c: #858C97; }
 [data-couleur="ardoise5"] { --c: #5D6470; }
 [data-couleur="ardoise6"] { --c: #3A3F48; }
-/* Nuances foncées : texte blanc dans l'en-tête */
-.tuile-entete:is([data-couleur="rouge5"], [data-couleur="rouge6"], [data-couleur="orange6"], [data-couleur="jaune6"], [data-couleur="vert6"], [data-couleur="turquoise5"], [data-couleur="turquoise6"], [data-couleur="bleu5"], [data-couleur="bleu6"], [data-couleur="violet5"], [data-couleur="violet6"], [data-couleur="rose5"], [data-couleur="rose6"], [data-couleur="brun5"], [data-couleur="brun6"], [data-couleur="ardoise5"], [data-couleur="ardoise6"]) { --encre: #fff; color: #fff; }
-.tuile-entete:is([data-couleur="rouge5"], [data-couleur="rouge6"], [data-couleur="orange6"], [data-couleur="jaune6"], [data-couleur="vert6"], [data-couleur="turquoise5"], [data-couleur="turquoise6"], [data-couleur="bleu5"], [data-couleur="bleu6"], [data-couleur="violet5"], [data-couleur="violet6"], [data-couleur="rose5"], [data-couleur="rose6"], [data-couleur="brun5"], [data-couleur="brun6"], [data-couleur="ardoise5"], [data-couleur="ardoise6"]) .etiquette { background: rgba(255, 255, 255, .2); color: #fff; }
-.tuile-entete:is([data-couleur="rouge5"], [data-couleur="rouge6"], [data-couleur="orange6"], [data-couleur="jaune6"], [data-couleur="vert6"], [data-couleur="turquoise5"], [data-couleur="turquoise6"], [data-couleur="bleu5"], [data-couleur="bleu6"], [data-couleur="violet5"], [data-couleur="violet6"], [data-couleur="rose5"], [data-couleur="rose6"], [data-couleur="brun5"], [data-couleur="brun6"], [data-couleur="ardoise5"], [data-couleur="ardoise6"]) .etiquette:hover { background: rgba(255, 255, 255, .3); }
-.tuile-entete:is([data-couleur="rouge5"], [data-couleur="rouge6"], [data-couleur="orange6"], [data-couleur="jaune6"], [data-couleur="vert6"], [data-couleur="turquoise5"], [data-couleur="turquoise6"], [data-couleur="bleu5"], [data-couleur="bleu6"], [data-couleur="violet5"], [data-couleur="violet6"], [data-couleur="rose5"], [data-couleur="rose6"], [data-couleur="brun5"], [data-couleur="brun6"], [data-couleur="ardoise5"], [data-couleur="ardoise6"]) :is(.poignee, .bouton-couleur, .bouton-menu, .lien-bouton):hover { background: rgba(255, 255, 255, .16); }
 
 /* Nuancier en petites cases */
 .popover-cases { gap: 10px; }
@@ -1022,3 +1013,27 @@ a.aj-ev-titre:hover { text-decoration: underline; }
 .etiquette:hover .etiquette-chevron, .etiquette[aria-expanded="true"] .etiquette-chevron { opacity: 1; }
 .menu-valeur { margin-left: 12px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media print { .etiquette-chevron { display: none !important; } .etiquette { padding-right: 9px; } }
+
+/* ---------- Couleur du projet en carré (2.16.2) : les tâches priment ---------- */
+.carre-projet {
+  flex: none; width: 40px; height: 40px; margin-left: 4px; border-radius: 9px; background: var(--c);
+  box-shadow: inset 0 0 0 1px rgba(28, 27, 25, .08); color: var(--encre); opacity: 1 !important;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.carre-projet[data-couleur="blanc"] { background: transparent; box-shadow: none; }
+.carre-projet svg { opacity: .5; }
+.poignee.carre-projet:hover, .poignee.carre-projet:focus-visible { background: var(--c); filter: brightness(.94); }
+.poignee.carre-projet[data-couleur="blanc"]:hover, .poignee.carre-projet[data-couleur="blanc"]:focus-visible { background: rgba(28, 27, 25, .08); filter: none; }
+.poignee.carre-projet:hover svg, .poignee.carre-projet:focus-visible svg { opacity: 1; }
+.poignee-inactive.carre-projet svg { opacity: .25; }
+.carre-projet:is([data-couleur="rouge5"], [data-couleur="rouge6"], [data-couleur="orange6"], [data-couleur="jaune6"], [data-couleur="vert6"], [data-couleur="turquoise5"], [data-couleur="turquoise6"], [data-couleur="bleu5"], [data-couleur="bleu6"], [data-couleur="violet5"], [data-couleur="violet6"], [data-couleur="rose5"], [data-couleur="rose6"], [data-couleur="brun5"], [data-couleur="brun6"], [data-couleur="ardoise5"], [data-couleur="ardoise6"]) { color: #fff; }
+.carre-fixe { width: 14px; height: 14px; border-radius: 4px; margin: 0 2px 0 4px; }
+.carre-fixe[data-couleur="blanc"] { box-shadow: inset 0 0 0 1.5px var(--trait); }
+@media print {
+  .tuile-entete .carre-projet { display: inline-flex !important; width: 10pt; height: 10pt; border-radius: 2.5pt; margin: 0 2pt 0 0; }
+  .tuile-entete .carre-projet[data-couleur="blanc"] { display: none !important; }
+  .carre-projet svg { display: none; }
+  .carre-projet { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  html[data-imp-couleur="nb"] .carre-projet { background: #fff !important; box-shadow: inset 0 0 0 1pt #1C1B19; filter: none; }
+  .tuile-entete { border-bottom: 0.6pt solid #CFCBC2; }
+}
