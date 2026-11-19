@@ -61,6 +61,7 @@ L'agenda est lu seulement, jamais modifié. Les rendez-vous restent en mémoire 
 - **Premier appareil :** « Continuer avec Google Drive », choisir un mot de passe (12 caractères ou plus), puis ranger la **clé de récupération** affichée.
 - **Autre appareil, ou PC remplacé :** ouvrir l'adresse, « Continuer avec Google Drive », entrer le mot de passe. Tout revient.
 - **Installer :** dans Chrome ou Edge, icône d'installation dans la barre d'adresse. Sur iPhone : Partager → « Sur l'écran d'accueil ». Sur Android : menu ⋮ → « Installer l'application ».
+- **Paiements à venir :** sous « Aujourd'hui ». Échéances de taxes qui reviennent aux mois choisis (DAS, TPS/TVQ, CNESST, Registre… ou les tiennes), à cocher quand c'est payé. Liste modifiable dans Compte → Paiements de taxes, avec un lien facultatif vers ton état de comptes. Gardées chiffrées dans le coffre.
 - **Tri des projets :** ordre des tuiles (glisser-déposer), ordre alphabétique, ou dernière modification (projet ou une de ses tâches). Le glisser-déposer n'est actif qu'en « ordre des tuiles ». Le choix suit les appareils.
 - **Rechercher / choisir un projet :** zone de recherche (nom des projets et texte des tâches, sans tenir compte des accents ni des majuscules ; Échap pour effacer) et menu « Tous les projets » pour n'en afficher qu'un.
 - **Couleur d'une tâche :** pastille devant le texte (clic pour choisir : urgent, à prévoir ou aucune). Le projet garde sa propre couleur. Les filtres de couleur prennent la couleur de la tâche, ou celle de son projet si la tâche n'en a pas.

@@ -204,13 +204,65 @@
   }
 
   /* =========================================================
+   * Échéances (paiements de taxes) : mois de l'année + jour (ou dernier jour)
+   * ======================================================= */
+
+  const ECHEANCES_DEFAUT = [
+    { id: 'def-das-ca', nom: 'Remises Canada – DAS', mois: [1, 4, 7, 10], jour: 15, note: '' },
+    { id: 'def-das-qc', nom: 'Remises Québec – DAS', mois: [1, 4, 7, 10], jour: 15, note: '' },
+    { id: 'def-tps-tvq', nom: 'TPS/TVH et TVQ (LMW-10)', mois: [2, 5, 8, 11], jour: 'dernier', note: 'via Revenu Québec' },
+    { id: 'def-registre', nom: 'Registre des entreprises – mise à jour annuelle', mois: [11], jour: 17, note: '' },
+    { id: 'def-cnesst', nom: 'CNESST – déclaration des salaires', mois: [3], jour: 15, note: 'par Mallette' },
+  ];
+
+  function echeanceValider(e, existante = {}) {
+    const nom = String(e.nom ?? existante.nom ?? '').trim().slice(0, 120);
+    if (!nom) throw new ErreurNoyau('Donne un nom au paiement.');
+    const mois = [...new Set((e.mois ?? existante.mois ?? []).map(Number).filter((m) => m >= 1 && m <= 12))].sort((a, b) => a - b);
+    if (!mois.length) throw new ErreurNoyau('Choisis au moins un mois.');
+    let jour = e.jour ?? existante.jour ?? 15;
+    if (jour !== 'dernier') { jour = parseInt(jour, 10); if (!(jour >= 1 && jour <= 31)) throw new ErreurNoyau('Jour invalide.'); }
+    const note = String(e.note ?? existante.note ?? '').trim().slice(0, 200);
+    return { nom, mois, jour, note };
+  }
+
+  /** Dates d'une échéance entre deux jours (AAAA-MM-JJ), bornes comprises. */
+  function datesEcheance(ec, du, au) {
+    const res = [];
+    let a = +du.slice(0, 4);
+    const fin = +au.slice(0, 4);
+    for (; a <= fin; a++) {
+      for (const m of ec.mois) {
+        const d = jourDansMois(a, m, ec.jour);
+        if (d >= du && d <= au) res.push(d);
+      }
+    }
+    return res;
+  }
+
+  /** Prochains paiements non payés (et ceux en retard depuis la création de l'échéance, 120 jours au plus). */
+  function echeancesAVenir(jour = aujourdhui(), { horizon = 400 } = {}) {
+    const recul = deUTC(new Date(versUTC(jour).getTime() - 120 * 86400000));
+    const loin = deUTC(new Date(versUTC(jour).getTime() + horizon * 86400000));
+    const liste = [];
+    for (const ec of Object.values(M.echeances || {})) {
+      const depuis = ec.depuis && ec.depuis > recul ? ec.depuis : recul;
+      for (const d of datesEcheance(ec, depuis, loin)) {
+        if (ec.payes && ec.payes[d]) continue;
+        liste.push({ id: ec.id, nom: ec.nom, note: ec.note || '', date: d });
+      }
+    }
+    return liste.sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : x.nom.localeCompare(y.nom, 'fr')));
+  }
+
+  /* =========================================================
    * Modèle
    * ======================================================= */
 
   function modeleVide() {
     return {
       format: 'mes-taches', version: 2,
-      projets: {}, taches: {}, couleurs: {}, supprimes: {},
+      projets: {}, taches: {}, couleurs: {}, supprimes: {}, echeances: {},
       reglages: { veille_minutes: 15, maj: 0 },
       derniere_sauvegarde: null,
     };
@@ -469,6 +521,58 @@
       return { taches, projets, couleurs: historique(ids), tronque };
     },
 
+    echeances() {
+      return { echeances: Object.values(M.echeances || {}).map((e) => copie(e)).sort((a, b) => a.nom.localeCompare(b.nom, 'fr')), initialisees: Boolean(M.reglages.echeances_init) };
+    },
+
+    /** Calendrier habituel : ids fixes, pour qu'il ne soit jamais créé en double entre deux appareils. */
+    echeances_defaut() {
+      const depuis = aujourdhui();
+      for (const d of ECHEANCES_DEFAUT) if (!M.echeances[d.id] && !M.supprimes[d.id]) ajouterEnregistrement('echeances', { ...copie(d), depuis, payes: {} });
+      M.reglages.echeances_init = true; M.reglages.maj = horodatage();
+      changer();
+      return ACTIONS.echeances();
+    },
+
+    echeance_creer(e) {
+      const v = echeanceValider(e);
+      const ec = ajouterEnregistrement('echeances', { id: uid(), ...v, depuis: aujourdhui(), payes: {} });
+      M.reglages.echeances_init = true; M.reglages.maj = horodatage();
+      changer();
+      return { echeance: copie(ec) };
+    },
+
+    echeance_modifier(e) {
+      const ec = M.echeances[e.id];
+      if (!ec) throw new ErreurNoyau('Paiement introuvable.');
+      Object.assign(ec, echeanceValider(e, ec));
+      toucher(ec);
+      changer();
+      return { echeance: copie(ec) };
+    },
+
+    echeance_supprimer(e) {
+      if (!M.echeances[e.id]) throw new ErreurNoyau('Paiement introuvable.');
+      supprimerEnregistrement('echeances', e.id);
+      changer();
+      return { ok: true };
+    },
+
+    /** Marque une date d'échéance comme payée (ou l'annule). */
+    echeance_payer(e) {
+      const ec = M.echeances[e.id];
+      if (!ec) throw new ErreurNoyau('Paiement introuvable.');
+      const d = dateSeule(e.date, false);
+      ec.payes = ec.payes || {};
+      if (e.paye === false) delete ec.payes[d]; else ec.payes[d] = maintenant();
+      // On ne garde que deux ans d'historique de paiements.
+      const limite = deUTC(new Date(versUTC(aujourdhui()).getTime() - 730 * 86400000));
+      for (const k of Object.keys(ec.payes)) if (k < limite) delete ec.payes[k];
+      toucher(ec);
+      changer();
+      return { echeance: copie(ec) };
+    },
+
     sauvegarde_info() {
       const parAnnee = new Map();
       for (const t of Object.values(M.taches)) {
@@ -505,7 +609,7 @@
     for (const src of [a.supprimes || {}, b.supprimes || {}]) {
       for (const [k, v] of Object.entries(src)) if (v > limite && (!r.supprimes[k] || v > r.supprimes[k])) r.supprimes[k] = v;
     }
-    for (const coll of ['projets', 'taches']) {
+    for (const coll of ['projets', 'taches', 'echeances']) {
       const ids = new Set([...Object.keys(a[coll] || {}), ...Object.keys(b[coll] || {})]);
       for (const id of ids) {
         const x = a[coll]?.[id], y = b[coll]?.[id];
@@ -529,7 +633,7 @@
   /** Signature du contenu (pour savoir si une fusion a changé quelque chose). */
   function signature(m) {
     const parts = [];
-    for (const coll of ['projets', 'taches']) for (const [k, v] of Object.entries(m[coll]).sort()) parts.push(k + ':' + v.maj);
+    for (const coll of ['projets', 'taches', 'echeances']) for (const [k, v] of Object.entries(m[coll] || {}).sort()) parts.push(k + ':' + v.maj);
     parts.push(Object.keys(m.couleurs).length, Object.keys(m.supprimes).length, m.reglages.maj || 0);
     return parts.join('|');
   }
@@ -854,7 +958,7 @@
    * ======================================================= */
 
   window.Noyau = {
-    VERSION_APP: '2.5.0',
+    VERSION_APP: '2.6.0',
     GROUPEMENTS, COULEURS, ErreurNoyau,
     api,
     get modele() { return M; },
@@ -865,12 +969,13 @@
     reglages() { return copie(M.reglages); },
     changerReglages(r) { Object.assign(M.reglages, r, { maj: horodatage() }); changer(); },
     exporter, lireFichierEchange, ecrireEchange, totaux,
+    echeancesAVenir,
     outils: { recurrenceProchaine, recurrenceValider, texteBrut, maintenant, aujourdhui, crc32, creerZip, lireZip },
   };
 
   function normaliser(m) {
     const n = { ...modeleVide(), ...copie(m) };
-    for (const k of ['projets', 'taches', 'couleurs', 'supprimes']) if (!n[k] || typeof n[k] !== 'object') n[k] = {};
+    for (const k of ['projets', 'taches', 'couleurs', 'supprimes', 'echeances']) if (!n[k] || typeof n[k] !== 'object') n[k] = {};
     if (!n.reglages || typeof n.reglages !== 'object') n.reglages = { veille_minutes: 15, maj: 0 };
     return n;
   }

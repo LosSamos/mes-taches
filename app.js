@@ -992,7 +992,7 @@
     }
 
     const large = ecranLarge.matches;
-    const bloc = blocAujourdhui(large);
+    const bloc = h('div', { class: 'blocs-jour' }, blocAujourdhui(large), blocPaiements(large));
     const contenu = [
       entete(large ? null : bloc),
       filtresEnCours(),
@@ -1002,7 +1002,7 @@
     ];
     if (!large) return h('div', { class: 'page' }, ...contenu);
     return h('div', { class: 'page page-avec-cote' },
-      h('aside', { class: 'cote sans-impression', 'aria-label': 'Aujourd’hui' }, bloc),
+      h('aside', { class: 'cote sans-impression', 'aria-label': 'Aujourd’hui et paiements' }, bloc),
       h('div', { class: 'principal' }, ...contenu));
   }
 
@@ -1179,6 +1179,168 @@
             h('span', { class: 'aj-urgent-detail' }, n <= 0 ? 'aujourd’hui' : `depuis ${n} j`)));
         }))
         : h('p', { class: 'aj-vide' }, 'Aucun projet urgent.'));
+  }
+
+  /* ---------- Bloc « Paiements à venir » (taxes) ---------- */
+
+  const MOIS_COURTS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+  S.payReplie = lirePref('mes-taches-paiements-replie') === '1';
+
+  function libelleEcheance(ec) {
+    const j = ec.jour === 'dernier' ? null : ec.jour === 1 ? '1er' : String(ec.jour);
+    if (ec.mois.length === 12) return j ? `le ${j} de chaque mois` : 'le dernier jour de chaque mois';
+    const mois = ec.mois.map((m) => MOIS_COURTS[m - 1]).join(', ');
+    return j ? `le ${j} ${mois}` : `dernier jour : ${mois}`;
+  }
+
+  function echeancesAffichees() {
+    const auj = iso(new Date());
+    const toutes = Noyau.echeancesAVenir(auj);
+    const retard = toutes.filter((x) => x.date < auj);
+    const avenir = toutes.filter((x) => x.date >= auj);
+    const proches = avenir.filter((x) => joursEntre(lireDate(auj), lireDate(x.date)) <= 45);
+    return [...retard, ...(proches.length >= 3 ? proches : avenir.slice(0, 3))];
+  }
+
+  function blocPaiements(large) {
+    const m = Noyau.modele;
+    const nb = Object.keys(m.echeances || {}).length;
+    const initialise = nb > 0 || m.reglages.echeances_init;
+    const liste = initialise ? echeancesAffichees() : [];
+    const auj = iso(new Date());
+    const enRetard = liste.filter((x) => x.date < auj).length;
+    const replie = !large && S.payReplie;
+    const lien = /^https:\/\//.test(m.reglages.lien_comptes || '') ? m.reglages.lien_comptes : null;
+
+    const titre = h('div', { class: 'aj-titre' }, h('h2', null, 'Paiements à venir'),
+      h('span', { class: 'aj-date' }, enRetard ? `${enRetard} en retard` : liste.length ? `Prochain : ${fmtCourt.format(lireDate(liste[0].date))}` : 'Taxes et remises'));
+    const entete = large
+      ? h('div', { class: 'aj-entete' }, titre, h('button', { type: 'button', class: 'aj-lien', onclick: () => allerACarte('carte-paiements') }, 'Modifier'))
+      : h('button', {
+        type: 'button', class: 'aj-entete aj-bascule', 'aria-expanded': String(!replie),
+        onclick: () => { S.payReplie = !S.payReplie; ecrirePref('mes-taches-paiements-replie', S.payReplie ? '1' : '0'); rendre(); },
+      }, titre, icone('bas', 16, 2.2));
+
+    let corps;
+    if (!initialise) {
+      corps = h('div', { class: 'aj-section' },
+        h('p', { class: 'aj-vide' }, 'Garde l’œil sur tes remises : DAS, TPS/TVQ, CNESST, Registre des entreprises…'),
+        h('div', { class: 'pay-actions' },
+          h('button', { type: 'button', class: 'bouton bouton-petit', onclick: async () => { await essayer(() => api('echeances_defaut', { methode: 'POST' })); rendre(); } }, 'Utiliser le calendrier habituel'),
+          h('button', { type: 'button', class: 'aj-lien', onclick: () => allerACarte('carte-paiements') }, 'Créer ma liste')));
+    } else if (!liste.length) {
+      corps = h('div', { class: 'aj-section' }, h('p', { class: 'aj-vide' }, 'Aucun paiement prévu.'));
+    } else {
+      corps = h('div', { class: 'aj-section' }, h('ul', { class: 'aj-liste' }, liste.map((x) => {
+        const d = lireDate(x.date);
+        const n = joursEntre(lireDate(auj), d);
+        const quand = n < 0 ? `en retard de ${-n} j` : n === 0 ? 'aujourd’hui' : n === 1 ? 'demain' : `dans ${n} j`;
+        const li = h('li', { class: 'tache pay' + (n < 0 ? ' en-retard' : n <= 7 ? ' bientot' : '') },
+          h('input', { type: 'checkbox', 'aria-label': `Payé : ${x.nom}, ${fmtCourt.format(d)}`, title: 'Cocher quand c’est payé', onchange: (e) => payer(x, li, e.currentTarget) }),
+          h('span', { class: 'pay-date' }, h('strong', null, fmtCourt.format(d)), h('span', null, quand)),
+          h('span', { class: 'pay-texte' }, x.nom, x.note ? h('span', { class: 'aj-tache-projet' }, x.note) : null));
+        return li;
+      })));
+    }
+    return h('section', { class: 'aujourdhui paiements sans-impression' + (replie ? ' replie' : ''), 'aria-label': 'Paiements à venir' },
+      entete,
+      replie ? null : h('div', { class: 'aj-corps' }, corps,
+        (lien || !large) ? h('div', { class: 'aj-section pay-pied' },
+          lien ? h('a', { href: lien, target: '_blank', rel: 'noopener noreferrer', class: 'aj-lien pay-lien' }, 'Ouvrir mon état de comptes ↗') : null,
+          !large ? h('button', { type: 'button', class: 'aj-lien', onclick: () => allerACarte('carte-paiements') }, 'Modifier la liste') : null) : null));
+  }
+
+  async function payer(x, li, caseACocher) {
+    li.classList.add('faite');
+    caseACocher.disabled = true;
+    const r = await essayer(() => api('echeance_payer', { methode: 'POST', donnees: { id: x.id, date: x.date } }));
+    if (!r) { li.classList.remove('faite'); caseACocher.checked = false; caseACocher.disabled = false; return; }
+    setTimeout(() => { if (!editionActive && !pop) rendre(); }, 450);
+    toast(`Payé : ${x.nom} (${fmtCourt.format(lireDate(x.date))})`, {
+      annuler: async () => { await essayer(() => api('echeance_payer', { methode: 'POST', donnees: { id: x.id, date: x.date, paye: false } })); rendre(); },
+    });
+  }
+
+  async function allerACarte(id) {
+    await allerA('compte');
+    const el = document.getElementById(id);
+    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  }
+
+  /* ---------- Compte : liste des paiements ---------- */
+
+  S.ech = { edition: null };
+
+  function carteEcheances() {
+    const m = Noyau.modele;
+    const liste = Object.values(m.echeances || {}).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+    const manquants = ['def-das-ca', 'def-das-qc', 'def-tps-tvq', 'def-registre', 'def-cnesst'].some((id) => !m.echeances?.[id]);
+    const ed = S.ech.edition;
+
+    const lien = h('input', { id: 'lien-comptes', type: 'url', inputmode: 'url', placeholder: 'https://docs.google.com/spreadsheets/…', value: m.reglages.lien_comptes || '', autocomplete: 'off', spellcheck: 'false' });
+    lien.addEventListener('change', () => {
+      const v = lien.value.trim();
+      if (v && !/^https:\/\//.test(v)) { toast('Le lien doit commencer par https://', { erreur: true }); return; }
+      Noyau.changerReglages({ lien_comptes: v });
+      toast(v ? 'Lien enregistré.' : 'Lien retiré.');
+    });
+
+    return h('section', { class: 'carte', id: 'carte-paiements', 'aria-labelledby': 't-paiements' },
+      h('h2', { id: 't-paiements' }, h('span', { class: 'pastille-icone' }, icone('calendrier', 18)), 'Paiements de taxes'),
+      h('p', { class: 'aide' }, 'Ces échéances reviennent chaque année aux mois choisis. Le bloc « Paiements à venir » montre les prochaines ; coche-les quand c’est payé.'),
+      liste.length
+        ? h('ul', { class: 'liste-echeances' }, liste.map((ec) => ed === ec.id ? h('li', null, formulaireEcheance(ec)) : h('li', { class: 'echeance' },
+          h('div', { class: 'echeance-texte' }, h('strong', null, ec.nom), h('span', null, libelleEcheance(ec) + (ec.note ? ` · ${ec.note}` : ''))),
+          h('button', { type: 'button', class: 'bouton bouton-petit', onclick: () => { S.ech.edition = ec.id; rendre(); } }, 'Modifier'),
+          h('button', { type: 'button', class: 'bouton bouton-petit bouton-texte', 'aria-label': `Supprimer ${ec.nom}`, title: 'Supprimer', onclick: () => supprimerEcheance(ec) }, icone('corbeille', 16)))))
+        : h('p', { class: 'aj-vide' }, 'Aucun paiement pour l’instant.'),
+      ed === 'nouveau' ? formulaireEcheance(null) : h('div', { class: 'pay-actions' },
+        h('button', { type: 'button', class: 'bouton', onclick: () => { S.ech.edition = 'nouveau'; rendre(); } }, icone('plus', 16), 'Ajouter un paiement'),
+        manquants && h('button', { type: 'button', class: 'bouton bouton-texte', onclick: async () => { await essayer(() => api('echeances_defaut', { methode: 'POST' })); rendre(); } }, 'Ajouter le calendrier habituel')),
+      h('div', { class: 'champ' }, h('label', { for: 'lien-comptes' }, 'Lien vers ton état de comptes (facultatif)'), lien,
+        h('p', { class: 'aide' }, 'Affiché au bas du bloc pour ouvrir ton fichier d’un clic. Il est gardé chiffré, comme tes tâches.')));
+  }
+
+  function formulaireEcheance(ec) {
+    const choisis = new Set(ec ? ec.mois : []);
+    const nom = h('input', { id: 'ech-nom', type: 'text', value: ec?.nom || '', placeholder: 'ex. Acompte d’impôt', maxlength: '120', autocomplete: 'off' });
+    const note = h('input', { id: 'ech-note', type: 'text', value: ec?.note || '', placeholder: 'ex. via Revenu Québec', maxlength: '200', autocomplete: 'off' });
+    const jour = h('select', { id: 'ech-jour', class: 'select' },
+      Array.from({ length: 31 }, (_, i) => h('option', { value: String(i + 1), selected: ec ? ec.jour === i + 1 : i === 14 }, `${i + 1 === 1 ? '1er' : i + 1}`)),
+      h('option', { value: 'dernier', selected: ec?.jour === 'dernier' }, 'Dernier jour du mois'));
+    const puces = MOIS_COURTS.map((libelle, i) => h('button', {
+      type: 'button', class: 'puce puce-petite', 'aria-pressed': String(choisis.has(i + 1)),
+      onclick: (e) => { const b = e.currentTarget; if (choisis.has(i + 1)) choisis.delete(i + 1); else choisis.add(i + 1); b.setAttribute('aria-pressed', String(choisis.has(i + 1))); },
+    }, libelle));
+    const raccourcis = [['Chaque mois', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]], ['Janv. avr. juil. oct.', [1, 4, 7, 10]], ['Févr. mai août nov.', [2, 5, 8, 11]], ['Mars juin sept. déc.', [3, 6, 9, 12]]];
+    const zonePuces = h('div', { class: 'puces-mois', role: 'group', 'aria-label': 'Mois' }, puces);
+    const enregistrer = async () => {
+      const donnees = { nom: nom.value, note: note.value, jour: jour.value === 'dernier' ? 'dernier' : Number(jour.value), mois: [...choisis] };
+      const r = await essayer(() => (ec ? api('echeance_modifier', { methode: 'POST', donnees: { id: ec.id, ...donnees } }) : api('echeance_creer', { methode: 'POST', donnees })));
+      if (!r) return;
+      S.ech.edition = null;
+      rendre();
+      toast(ec ? 'Paiement modifié.' : 'Paiement ajouté.');
+    };
+    return h('div', { class: 'formulaire-echeance' },
+      h('div', { class: 'champ' }, h('label', { for: 'ech-nom' }, 'Nom'), nom),
+      h('div', { class: 'champ' }, h('span', { class: 'etiquette-champ' }, 'Mois'), zonePuces,
+        h('div', { class: 'raccourcis-mois' }, raccourcis.map(([l, ms]) => h('button', { type: 'button', class: 'aj-lien', onclick: () => {
+          choisis.clear(); ms.forEach((x) => choisis.add(x));
+          zonePuces.querySelectorAll('.puce').forEach((b, i) => b.setAttribute('aria-pressed', String(choisis.has(i + 1))));
+        } }, l)))),
+      h('div', { class: 'champ' }, h('label', { for: 'ech-jour' }, 'Jour'), jour),
+      h('div', { class: 'champ' }, h('label', { for: 'ech-note' }, 'Note (facultatif)'), note),
+      h('div', { class: 'pay-actions' },
+        h('button', { type: 'button', class: 'bouton bouton-principal', onclick: enregistrer }, 'Enregistrer'),
+        h('button', { type: 'button', class: 'bouton bouton-texte', onclick: () => { S.ech.edition = null; rendre(); } }, 'Annuler')));
+  }
+
+  async function supprimerEcheance(ec) {
+    const ok = await confirmer('Supprimer ce paiement ?', `« ${ec.nom} » ne sera plus rappelé.`, { ok: 'Supprimer', danger: true });
+    if (!ok) return;
+    await essayer(() => api('echeance_supprimer', { methode: 'POST', donnees: { id: ec.id } }));
+    rendre();
   }
 
   /** Fait défiler jusqu'au projet (en retirant les filtres qui le cacheraient). */
@@ -1983,6 +2145,7 @@
       h('header', null, h('h1', { class: 'titre-page' }, 'Compte'), h('p', { class: 'sous-titre' }, `Mes tâches · version ${Noyau.VERSION_APP}`)),
       h('div', { class: 'colonnes' }, carteDrive(), carteSecurite()),
       h('div', { class: 'colonnes' }, carteVeille(), carteCopies()),
+      carteEcheances(),
       carteImpression(),
       h('h2', { class: 'titre-section' }, 'Sauvegarde en fichier .zip'),
       h('div', { class: 'colonnes' }, carteExport(info), carteImport(info)),
