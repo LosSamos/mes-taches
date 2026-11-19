@@ -624,3 +624,39 @@ a.aj-ev-titre:hover { text-decoration: underline; }
 .paye-suivante { color: var(--texte-doux); font-size: 12.5px; }
 .paye-corps .aj-lien { align-self: flex-start; margin: 4px 0 0 -6px; }
 .champ input[type="date"] { min-height: 44px; padding: 0 12px; border: 1px solid var(--bordure-forte); border-radius: 10px; background: var(--surface); font-size: 15px; }
+
+/* ---------- Blocs de gauche plus discrets (2.6.2) : l'info reste, les tâches dominent ---------- */
+.page-avec-cote { grid-template-columns: 252px minmax(0, 1fr); column-gap: 28px; }
+.blocs-jour { gap: 10px; }
+.blocs-jour .aujourdhui { border-radius: 10px; box-shadow: 0 0 0 1px var(--bordure); }
+.blocs-jour .aj-entete { padding: 10px 12px 8px; gap: 8px; }
+.blocs-jour .aj-titre h2 { font-size: 14.5px; }
+.blocs-jour .aj-date { font-size: 11.5px; }
+.blocs-jour .aj-resume { font-size: 11.5px; }
+.blocs-jour .aj-corps { padding-bottom: 2px; }
+.blocs-jour .aj-section { padding: 7px 12px 8px; }
+.blocs-jour .aj-section-titre { margin-bottom: 3px; gap: 5px; }
+.blocs-jour .aj-section-titre svg { width: 12px; height: 12px; }
+.blocs-jour .aj-section-titre h3 { font-size: 10px; letter-spacing: .07em; }
+.blocs-jour .aj-lien { font-size: 11px; padding: 1px 5px; }
+.blocs-jour .aj-vide { font-size: 12px; margin: 0 0 6px; }
+.blocs-jour .aj-ev { font-size: 12.5px; padding: 3px 0; column-gap: 8px; }
+.blocs-jour .aj-ev-heure, .blocs-jour .aj-ev-detail { font-size: 11px; }
+.blocs-jour .aj-tache, .blocs-jour .pay { font-size: 12.5px; padding: 2px 4px; gap: 8px; line-height: 1.4; }
+.blocs-jour .tache input[type="checkbox"] { width: 14px; height: 14px; margin-top: 2px; }
+.blocs-jour .aj-tache-projet { font-size: 11px; }
+.blocs-jour .aj-urgent { font-size: 12.5px; padding: 3px 6px; gap: 7px; }
+.blocs-jour .aj-pastille { width: 9px; height: 9px; }
+.blocs-jour .aj-urgent-detail, .blocs-jour .aj-urgent-projet { font-size: 11px; }
+.blocs-jour .pay-date { width: 54px; }
+.blocs-jour .pay-date strong { font-size: 12px; }
+.blocs-jour .pay-date span { font-size: 10.5px; }
+.blocs-jour .paye-grande strong { font-size: 14.5px; }
+.blocs-jour .paye-grande span { font-size: 11.5px; }
+.blocs-jour .paye-detail { font-size: 11.5px; }
+.blocs-jour .paye-suivante { font-size: 11px; }
+.blocs-jour .bouton-petit { min-height: 32px; font-size: 12px; padding: 0 10px; }
+.blocs-jour .aj-bascule > svg { width: 14px; height: 14px; }
+.blocs-jour .aj-ev { grid-template-columns: 3px 50px minmax(0, 1fr); }
+.blocs-jour .aj-ev-barre { grid-row: auto; }
+.blocs-jour .aj-ev-heure { padding-top: 1px; font-variant-numeric: tabular-nums; }

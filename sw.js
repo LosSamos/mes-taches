@@ -2,7 +2,7 @@
  * Garde les fichiers de l'app pour qu'elle s'ouvre même sans Internet.
  * À chaque nouvelle version, changer VERSION : l'app propose alors « Mettre à jour ».
  */
-const VERSION = '2.6.1';
+const VERSION = '2.6.2';
 const CACHE = `mes-taches-${VERSION}`;
 const FICHIERS = [
   './', 'index.html', 'styles.css', 'config.js', 'coffre.js', 'noyau.js', 'stockage.js', 'agenda.js', 'app.js',

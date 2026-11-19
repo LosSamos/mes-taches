@@ -1073,6 +1073,13 @@
 
   const heureCourte = (d) => (d.getMinutes() ? heure(d) : `${d.getHours()} h`);
 
+  /** Heure de début seulement (colonne étroite) ; la plage complète est dans l'infobulle. */
+  function debutCourt(ev) {
+    if (ev.journee) return 'Journée';
+    if (ev.debut < aujourdhui()) return ev.fin > plusJours(aujourdhui(), 1) ? 'Journée' : `→ ${heureCourte(ev.fin)}`;
+    return heureCourte(ev.debut);
+  }
+
   function plageHoraire(ev) {
     if (ev.journee) return 'Journée';
     const debutJour = aujourdhui(), finJour = plusJours(debutJour, 1);
@@ -1124,7 +1131,7 @@
         if (/^#[0-9a-f]{3,8}$/i.test(ev.couleur || '')) barre.style.background = ev.couleur;
         return h('li', { class: 'aj-ev' + (passe ? ' passe' : '') + (enCours ? ' en-cours' : '') },
           barre,
-          h('span', { class: 'aj-ev-heure' }, plageHoraire(ev)),
+          h('span', { class: 'aj-ev-heure', title: plageHoraire(ev) }, debutCourt(ev), debutCourt(ev) !== plageHoraire(ev) ? h('span', { class: 'visuellement-cache' }, ` (${plageHoraire(ev)})`) : null),
           h('span', { class: 'aj-ev-texte' }, nom,
             (ev.lieu || ev.agenda) ? h('span', { class: 'aj-ev-detail' }, [ev.lieu, ev.agenda].filter(Boolean).join(' · ')) : null,
             enCours ? h('span', { class: 'visuellement-cache' }, ' (en cours)') : null));

@@ -958,7 +958,7 @@
    * ======================================================= */
 
   window.Noyau = {
-    VERSION_APP: '2.6.1',
+    VERSION_APP: '2.6.2',
     GROUPEMENTS, COULEURS, ErreurNoyau,
     api,
     get modele() { return M; },
