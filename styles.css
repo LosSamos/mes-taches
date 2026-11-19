@@ -578,3 +578,10 @@ a.aj-ev-titre:hover { text-decoration: underline; }
 .titre-app .logo { flex: none; width: 36px; height: 36px; display: block; }
 @media (max-width: 560px) { .titre-app { gap: 10px; } .titre-app .logo { width: 30px; height: 30px; } }
 @media print { #entete-impression .titre-app { gap: 8px; } #entete-impression .logo { width: 24px; height: 24px; } }
+
+/* ---------- Tri des projets (2.5) ---------- */
+.select-tri { flex: 0 1 250px; min-width: 0; max-width: 250px; }
+.select-tri.actif { border: 2px solid var(--encre); }
+.poignee-inactive { opacity: .2 !important; cursor: default !important; display: inline-flex; align-items: center; justify-content: center; }
+@media (max-width: 640px) { .select-tri { flex: 1 1 0; max-width: none; } }
+@media (max-width: 1100px) and (min-width: 641px) { .rangee-recherche { flex-wrap: wrap; } .boite-recherche { flex: 1 1 100%; } .select-projet, .select-tri { flex: 1 1 0; max-width: none; } }

@@ -912,6 +912,27 @@
    * Vue « En cours »
    * ======================================================= */
 
+  const TRIS = [['manuel', 'Ordre des tuiles'], ['alpha', 'Ordre alphabétique'], ['modif', 'Dernière modification']];
+  const triProjets = () => { const t = Noyau.reglages().tri_projets; return TRIS.some(([v]) => v === t) ? t : 'manuel'; };
+
+  /** Dernière activité de chaque projet (lui-même ou ses tâches, cochées comprises), lue en direct dans le modèle. */
+  function activiteProjets() {
+    const m = Noyau.modele, act = new Map();
+    for (const p of Object.values(m.projets)) act.set(p.id, p.maj || 0);
+    for (const t of Object.values(m.taches)) act.set(t.projet_id, Math.max(act.get(t.projet_id) || 0, t.maj || 0));
+    return act;
+  }
+
+  function trier(liste) {
+    const tri = triProjets();
+    if (tri === 'alpha') return liste.sort((a, b) => a.projet.titre.localeCompare(b.projet.titre, 'fr', { sensitivity: 'base', numeric: true }));
+    if (tri === 'modif') {
+      S.activite = activiteProjets();
+      return liste.sort((a, b) => (S.activite.get(b.projet.id) || 0) - (S.activite.get(a.projet.id) || 0));
+    }
+    return liste;
+  }
+
   const filtreVide = () => ({ groupement: null, couleur: 'toutes', du: null, au: null, projet: null, texte: '' });
 
   function filtreActif() {
@@ -949,6 +970,7 @@
       }
       resultat.push({ projet: p, taches });
     }
+    trier(resultat);
     return resultat;
   }
 
@@ -1249,12 +1271,19 @@
     h('option', { value: '' }, f.groupement ? `Tous les projets · ${f.groupement}` : 'Tous les projets'),
     groupes.map(([g, l]) => h('optgroup', { label: g }, l.map((p) => h('option', { value: p.id, selected: f.projet === p.id }, p.titre + (p.couleur === 'gris' ? ' (complété)' : ''))))));
 
+    const tri = triProjets();
+    const choixTri = h('select', {
+      class: 'select select-tri' + (tri !== 'manuel' ? ' actif' : ''), 'aria-label': 'Trier les projets', title: 'Trier les projets',
+      onchange: (e) => { Noyau.changerReglages({ tri_projets: e.currentTarget.value }); rendre(); },
+    }, TRIS.map(([v, l]) => h('option', { value: v, selected: v === tri }, `Tri : ${l.charAt(0).toLowerCase()}${l.slice(1)}`)));
+
     return h('div', { class: 'rangee rangee-recherche' },
       h('div', { class: 'boite-recherche' + (f.texte ? ' remplie' : '') },
         icone('loupe', 16, 2.2), champ,
         f.texte && h('button', { type: 'button', class: 'effacer-recherche', 'aria-label': 'Effacer la recherche', onclick: () => { f.texte = ''; rendre(); $('#recherche')?.focus(); } }, icone('fermer', 14))),
       liste,
-      f.projet && h('button', { type: 'button', class: 'effacer-periode', 'aria-label': 'Afficher tous les projets', title: 'Tous les projets', onclick: () => { f.projet = null; rendre(); } }, icone('fermer', 14)));
+      f.projet && h('button', { type: 'button', class: 'effacer-periode', 'aria-label': 'Afficher tous les projets', title: 'Tous les projets', onclick: () => { f.projet = null; rendre(); } }, icone('fermer', 14)),
+      choixTri);
   }
 
   function tuile(p, taches) {
@@ -1270,9 +1299,21 @@
         `${info.nom} depuis ${n <= 0 ? 'aujourd’hui' : n + ' j'}`);
     }
 
-    const poignee = h('button', { type: 'button', class: 'poignee', 'aria-label': `Déplacer « ${p.titre} » (flèches haut et bas)`, title: 'Glisser pour déplacer' }, icone('poignee', 18));
-    poignee.addEventListener('pointerdown', (e) => demarrerGlisser(e, el, poignee));
-    poignee.addEventListener('keydown', (e) => deplacerAuClavier(e, p.id));
+    const manuel = triProjets() === 'manuel';
+    const poignee = manuel
+      ? h('button', { type: 'button', class: 'poignee', 'aria-label': `Déplacer « ${p.titre} » (flèches haut et bas)`, title: 'Glisser pour déplacer' }, icone('poignee', 18))
+      : h('span', { class: 'poignee poignee-inactive', title: 'Pour déplacer les tuiles, choisis « Tri : ordre des tuiles »', 'aria-hidden': 'true' }, icone('poignee', 18));
+    if (manuel) {
+      poignee.addEventListener('pointerdown', (e) => demarrerGlisser(e, el, poignee));
+      poignee.addEventListener('keydown', (e) => deplacerAuClavier(e, p.id));
+    }
+    let modif = null;
+    const quand = triProjets() === 'modif' ? (S.activite?.get(p.id) || p.modifie_le) : 0;
+    if (quand) {
+      const d = new Date(quand);
+      const n = joursEntre(d, new Date());
+      modif = h('span', { class: 'age', title: `Dernière modification : ${dateLongue(d)}` }, n <= 0 ? `modifié à ${heure(d)}` : n === 1 ? 'modifié hier' : `modifié le ${dateCourte(d)}`);
+    }
 
     el.append(
       h('div', { class: 'tuile-entete fond-couleur', 'data-couleur': p.couleur },
@@ -1281,7 +1322,7 @@
         h('span', { class: 'tuile-meta' },
           h('button', { type: 'button', class: 'etiquette', 'aria-haspopup': 'menu', 'aria-expanded': 'false', title: 'Changer le groupement', onclick: (e) => menuGroupement(e.currentTarget, p) }, p.groupement),
           libelleCouleurImpression(p.couleur),
-          age),
+          age, modif),
         h('button', { type: 'button', class: 'bouton-couleur', 'aria-label': `Couleur : ${info.nom}. Changer la couleur`, 'aria-haspopup': 'dialog', 'aria-expanded': 'false', 'data-couleur': p.couleur, onclick: (e) => menuCouleur(e.currentTarget, p) },
           h('span', { class: 'rond' })),
         h('button', { type: 'button', class: 'bouton-menu', 'aria-label': 'Autres actions', 'aria-haspopup': 'menu', 'aria-expanded': 'false', onclick: (e) => menuProjet(e.currentTarget, p) }, icone('menu', 18))),

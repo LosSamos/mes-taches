@@ -274,7 +274,11 @@
 
   const ACTIONS = {
     donnees() {
-      const projets = Object.values(M.projets).filter((p) => !p.archive_le).sort(parOrdre).map(versProjet);
+      // Dernière activité d'un projet : lui-même ou la plus récente de ses tâches (créée, modifiée, cochée).
+      const activite = new Map();
+      for (const t of Object.values(M.taches)) activite.set(t.projet_id, Math.max(activite.get(t.projet_id) || 0, t.maj || 0));
+      const projets = Object.values(M.projets).filter((p) => !p.archive_le).sort(parOrdre)
+        .map((p) => ({ ...versProjet(p), modifie_le: Math.max(p.maj || 0, activite.get(p.id) || 0) }));
       const actifs = new Set(projets.map((p) => p.id));
       const m = maintenant();
       // Tâches apparues par récurrence (copie créée quand l'occurrence précédente a été cochée).
@@ -850,7 +854,7 @@
    * ======================================================= */
 
   window.Noyau = {
-    VERSION_APP: '2.4.1',
+    VERSION_APP: '2.5.0',
     GROUPEMENTS, COULEURS, ErreurNoyau,
     api,
     get modele() { return M; },
