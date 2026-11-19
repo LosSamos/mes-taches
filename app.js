@@ -39,6 +39,7 @@
     sortie: ['M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4', 'M16 17l5-5-5-5', 'M21 12H9'],
     calendrier: ['M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z', 'M3 10h18', 'M8 3v4', 'M16 3v4'],
     bas: ['M6 9l6 6 6-6'],
+    loupe: ['M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z', 'M20 20l-4.2-4.2'],
     gauche: ['M15 6l-6 6 6 6'],
     droite: ['M9 6l6 6-6 6'],
     recurrence: ['M17 2l4 4-4 4', 'M3 11V9a3 3 0 0 1 3-3h15', 'M7 22l-4-4 4-4', 'M21 13v2a3 3 0 0 1-3 3H3'],
@@ -75,7 +76,7 @@
     couleurs: [],
     compteArchives: 0,
     chargeLe: 0,
-    filtre: { groupement: null, couleur: 'toutes', du: null, au: null },
+    filtre: { groupement: null, couleur: 'toutes', du: null, au: null, projet: null, texte: '' },
     arch: { type: 'finalise', du: null, au: null, groupement: '', couleur: 'toutes', donnees: null, chargement: false },
     sauv: { apercu: null, lu: null, erreur: null, mode: 'fusion', periode: null, envoi: false },
     completesOuverts: true,
@@ -910,10 +911,15 @@
    * Vue « En cours »
    * ======================================================= */
 
+  const filtreVide = () => ({ groupement: null, couleur: 'toutes', du: null, au: null, projet: null, texte: '' });
+
   function filtreActif() {
     const f = S.filtre;
-    return Boolean(f.groupement || f.couleur !== 'toutes' || f.du);
+    return Boolean(f.groupement || f.couleur !== 'toutes' || f.du || f.projet || f.texte.trim());
   }
+
+  /** Pour chercher sans tenir compte des accents ni des majuscules. */
+  const sansAccents = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
   /** Projets et tâches visibles selon les filtres. */
   function selection() {
@@ -921,8 +927,11 @@
     const du = f.du ? `${f.du} 00:00:00` : null;
     const au = f.du ? `${f.au || f.du} 23:59:59` : null;
     const resultat = [];
+    const cherche = sansAccents(f.texte.trim());
+    if (f.projet && !S.projets.some((p) => p.id === f.projet)) f.projet = null;
     for (const p of S.projets) {
       if (f.groupement && p.groupement !== f.groupement) continue;
+      if (f.projet && p.id !== f.projet) continue;
       let taches = tachesDe(p.id);
       if (du) taches = taches.filter((t) => t.cree_le >= du && t.cree_le <= au);
       if (f.couleur !== 'toutes') {
@@ -932,6 +941,11 @@
         if (!taches.length && !(vide && !du && COULEURS[p.couleur]?.groupe === f.couleur)) continue;
       }
       if (du && !taches.length) continue;
+      // Recherche : un projet dont le nom correspond garde toutes ses tâches ; sinon, seulement les tâches qui correspondent.
+      if (cherche && !sansAccents(p.titre).includes(cherche)) {
+        taches = taches.filter((t) => sansAccents(texteBrut(t.texte)).includes(cherche));
+        if (!taches.length) continue;
+      }
       resultat.push({ projet: p, taches });
     }
     return resultat;
@@ -951,7 +965,7 @@
     } else if (!actifs.length && !completes.length) {
       corps = h('div', { class: 'vide' },
         h('p', null, 'Rien ne correspond à ces filtres.'),
-        h('button', { type: 'button', class: 'bouton', onclick: () => { S.filtre = { groupement: null, couleur: 'toutes', du: null, au: null }; rendre(); } }, 'Effacer les filtres'));
+        h('button', { type: 'button', class: 'bouton', onclick: () => { S.filtre = filtreVide(); rendre(); } }, 'Effacer les filtres'));
     }
 
     const large = ecranLarge.matches;
@@ -1147,7 +1161,7 @@
   /** Fait défiler jusqu'au projet (en retirant les filtres qui le cacheraient). */
   function allerAuProjet(id, tacheId = null) {
     const cible = () => (tacheId ? $(`.tuile .tache[data-id="${CSS.escape(tacheId)}"]`) : $(`.tuile[data-id="${CSS.escape(id)}"]`));
-    if (!cible()) { S.filtre = { groupement: null, couleur: 'toutes', du: null, au: null }; rendre(); }
+    if (!cible()) { S.filtre = filtreVide(); rendre(); }
     const el = cible();
     if (!el) return;
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1181,6 +1195,7 @@
     }, icone('calendrier'), libelle ? `Créées : ${libelle.charAt(0).toLowerCase()}${libelle.slice(1)}` : 'Toutes les dates', icone('bas', 14, 2.2));
 
     return h('div', { class: 'filtres sans-impression' },
+      rangeeRecherche(),
       h('div', { class: 'rangee rangee-periode' },
         boutonPeriode,
         f.du && h('button', { type: 'button', class: 'effacer-periode', 'aria-label': 'Effacer la période', onclick: () => { f.du = null; f.au = null; rendre(); } }, icone('fermer', 14)),
@@ -1189,7 +1204,11 @@
         h('button', { type: 'button', class: 'puce', 'aria-pressed': String(!f.groupement), onclick: () => { f.groupement = null; rendre(); } }, 'Tout'),
         S.groupements.map((g) => h('button', {
           type: 'button', class: 'puce', 'aria-pressed': String(f.groupement === g),
-          onclick: () => { f.groupement = f.groupement === g ? null : g; rendre(); },
+          onclick: () => {
+            f.groupement = f.groupement === g ? null : g;
+            if (f.groupement && f.projet && projetPar(f.projet)?.groupement !== f.groupement) f.projet = null;
+            rendre();
+          },
         }, g)))),
       h('div', { class: 'rangee puces-defile', role: 'group', 'aria-label': 'Couleur' },
         FILTRES_COULEUR.map((c) => h('button', {
@@ -1197,6 +1216,44 @@
           title: c.cle !== 'toutes' ? 'Selon la couleur de chaque tâche, ou celle de son projet si la tâche n’en a pas' : null,
           onclick: () => { f.couleur = c.cle; rendre(); },
         }, c.points && points(c.points), c.libelle))));
+  }
+
+  let minuterieRecherche = null;
+
+  function rangeeRecherche() {
+    const f = S.filtre;
+    const champ = h('input', {
+      type: 'search', id: 'recherche', class: 'champ-recherche', placeholder: 'Rechercher un projet ou une tâche',
+      'aria-label': 'Rechercher un projet ou une tâche', autocomplete: 'off', spellcheck: 'false', value: f.texte,
+    });
+    champ.addEventListener('input', () => {
+      clearTimeout(minuterieRecherche);
+      minuterieRecherche = setTimeout(() => {
+        const debut = champ.selectionStart, fin = champ.selectionEnd;
+        f.texte = champ.value;
+        rendre();
+        // La page est redessinée : on remet le curseur dans la zone de recherche.
+        const nouveau = $('#recherche');
+        if (nouveau) { nouveau.focus({ preventScroll: true }); try { nouveau.setSelectionRange(debut, fin); } catch { /* rien */ } }
+      }, 150);
+    });
+    champ.addEventListener('keydown', (e) => { if (e.key === 'Escape' && champ.value) { e.preventDefault(); e.stopPropagation(); f.texte = ''; rendre(); $('#recherche')?.focus(); } });
+
+    const projets = S.projets.filter((p) => !f.groupement || p.groupement === f.groupement);
+    const groupes = S.groupements.map((g) => [g, projets.filter((p) => p.groupement === g).sort((a, b) => a.titre.localeCompare(b.titre, 'fr'))]).filter(([, l]) => l.length);
+    const liste = h('select', {
+      class: 'select select-projet' + (f.projet ? ' actif' : ''), 'aria-label': 'Projet',
+      onchange: (e) => { f.projet = e.currentTarget.value || null; rendre(); },
+    },
+    h('option', { value: '' }, f.groupement ? `Tous les projets · ${f.groupement}` : 'Tous les projets'),
+    groupes.map(([g, l]) => h('optgroup', { label: g }, l.map((p) => h('option', { value: p.id, selected: f.projet === p.id }, p.titre + (p.couleur === 'gris' ? ' (complété)' : ''))))));
+
+    return h('div', { class: 'rangee rangee-recherche' },
+      h('div', { class: 'boite-recherche' + (f.texte ? ' remplie' : '') },
+        icone('loupe', 16, 2.2), champ,
+        f.texte && h('button', { type: 'button', class: 'effacer-recherche', 'aria-label': 'Effacer la recherche', onclick: () => { f.texte = ''; rendre(); $('#recherche')?.focus(); } }, icone('fermer', 14))),
+      liste,
+      f.projet && h('button', { type: 'button', class: 'effacer-periode', 'aria-label': 'Afficher tous les projets', title: 'Tous les projets', onclick: () => { f.projet = null; rendre(); } }, icone('fermer', 14)));
   }
 
   function tuile(p, taches) {
@@ -2299,7 +2356,8 @@
       const f = S.filtre;
       const sel = selection().filter((x) => x.projet.couleur !== 'gris');
       const n = sel.reduce((s, g) => s + g.taches.length, 0);
-      sousTitre = ['En cours', f.groupement || 'tous les groupements', f.du ? `créées ${plage(f.du, f.au).toLowerCase()}` : 'toutes les dates',
+      sousTitre = ['En cours', f.projet ? projetPar(f.projet)?.titre : null, f.texte.trim() ? `recherche « ${f.texte.trim()} »` : null,
+        f.groupement || 'tous les groupements', f.du ? `créées ${plage(f.du, f.au).toLowerCase()}` : 'toutes les dates',
         f.couleur === 'toutes' ? null : FILTRES_COULEUR.find((c) => c.cle === f.couleur).libelle.toLowerCase()].filter(Boolean).join(' · ');
       total = `${n} tâche${n > 1 ? 's' : ''}, ${sel.length} projet${sel.length > 1 ? 's' : ''}`;
     }

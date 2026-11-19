@@ -61,6 +61,7 @@ L'agenda est lu seulement, jamais modifié. Les rendez-vous restent en mémoire 
 - **Premier appareil :** « Continuer avec Google Drive », choisir un mot de passe (12 caractères ou plus), puis ranger la **clé de récupération** affichée.
 - **Autre appareil, ou PC remplacé :** ouvrir l'adresse, « Continuer avec Google Drive », entrer le mot de passe. Tout revient.
 - **Installer :** dans Chrome ou Edge, icône d'installation dans la barre d'adresse. Sur iPhone : Partager → « Sur l'écran d'accueil ». Sur Android : menu ⋮ → « Installer l'application ».
+- **Rechercher / choisir un projet :** zone de recherche (nom des projets et texte des tâches, sans tenir compte des accents ni des majuscules ; Échap pour effacer) et menu « Tous les projets » pour n'en afficher qu'un.
 - **Couleur d'une tâche :** pastille devant le texte (clic pour choisir : urgent, à prévoir ou aucune). Le projet garde sa propre couleur. Les filtres de couleur prennent la couleur de la tâche, ou celle de son projet si la tâche n'en a pas.
 - **Aujourd'hui :** à gauche sur grand écran, sous la date sur téléphone (repliable). Rendez-vous du jour (Google Agenda), tâches répétées revenues aujourd'hui (cochables), projets urgents (un clic mène au projet).
 - **Compte :** mot de passe, nouvelle clé de récupération, mise en veille, Google Drive, copies, export et import .zip, effacement de l'appareil.

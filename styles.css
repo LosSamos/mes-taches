@@ -502,3 +502,24 @@ a.aj-ev-titre:hover { text-decoration: underline; }
   .pastille-tache[data-couleur="blanc"] { display: none !important; }
   .pastille-tache, .pastille-fixe { -webkit-print-color-adjust: exact; print-color-adjust: exact; opacity: 1 !important; }
 }
+
+/* ---------- Recherche et choix du projet (2.3) ---------- */
+.rangee-recherche { flex-wrap: nowrap; gap: 8px; }
+.boite-recherche { position: relative; flex: 1 1 auto; min-width: 0; display: flex; align-items: center; }
+.boite-recherche > svg { position: absolute; left: 13px; color: var(--texte-doux); pointer-events: none; }
+.champ-recherche {
+  width: 100%; min-height: 44px; padding: 0 40px 0 38px; border: 1px solid var(--bordure-forte); border-radius: 10px;
+  background: var(--surface); font-size: 14px; -webkit-appearance: none; appearance: none;
+}
+.champ-recherche::placeholder { color: var(--texte-doux); }
+.champ-recherche::-webkit-search-cancel-button { display: none; }
+.boite-recherche.remplie .champ-recherche { border: 2px solid var(--encre); padding-left: 37px; }
+.effacer-recherche { position: absolute; right: 6px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 8px; background: transparent; color: var(--texte-doux); }
+.effacer-recherche:hover { background: var(--survol); color: var(--encre); }
+.select-projet { flex: 0 1 260px; min-width: 0; max-width: 260px; text-overflow: ellipsis; }
+.select-projet.actif { border: 2px solid var(--encre); }
+@media (max-width: 640px) {
+  .rangee-recherche { flex-wrap: wrap; }
+  .boite-recherche { flex: 1 1 100%; }
+  .select-projet { flex: 1 1 0; max-width: none; }
+}
