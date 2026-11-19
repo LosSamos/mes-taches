@@ -476,3 +476,29 @@ a.aj-ev-titre:hover { text-decoration: underline; }
 @keyframes surligne { 0%, 35% { box-shadow: 0 0 0 3px var(--encre), 0 1px 2px rgba(28, 27, 25, .06); } 100% { box-shadow: 0 0 0 1px var(--bordure), 0 1px 2px rgba(28, 27, 25, .06); } }
 @media (prefers-reduced-motion: reduce) { .tuile.surligne { animation: none; } .aj-bascule > svg { transition: none; } }
 @media print { .aujourdhui, .cote { display: none !important; } .page-avec-cote { display: block; } }
+
+/* ---------- Couleur des tâches (2.2) : pastille ---------- */
+[data-couleur="vert-p"]   { --c-bord: var(--c-vert); }
+[data-couleur="jaune-p"]  { --c-bord: #E0AE00; }
+[data-couleur="orange-p"] { --c-bord: var(--c-orange); }
+[data-couleur="rouge-p"]  { --c-bord: var(--c-rouge); }
+.pastille-tache, .pastille-fixe { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 23px; margin: 0 -6px 0 -4px; padding: 0; border: 0; border-radius: 6px; background: transparent; }
+.pastille-tache { cursor: pointer; }
+.pastille-tache:hover { background: var(--bordure); }
+.pastille-tache .rond, .pastille-fixe .rond, .aj-pastille-tache { width: 12px; height: 12px; border-radius: 50%; background: var(--c); }
+.pastille-tache[data-couleur$="-p"] .rond, .pastille-fixe[data-couleur$="-p"] .rond, .aj-pastille-tache[data-couleur$="-p"] { box-shadow: inset 0 0 0 2px var(--c-bord); }
+.pastille-tache[data-couleur="blanc"] { opacity: 0; }
+.pastille-tache[data-couleur="blanc"] .rond { background: transparent; box-shadow: inset 0 0 0 1.5px var(--trait); }
+.tache:hover .pastille-tache, .pastille-tache:focus-visible, .pastille-tache[aria-expanded="true"] { opacity: 1; }
+@media (hover: none) { .pastille-tache[data-couleur="blanc"] { opacity: 1; } .pastille-tache[data-couleur="blanc"] .rond { box-shadow: inset 0 0 0 1.5px var(--bordure-forte); } }
+.arch-tache .pastille-fixe { margin: 0; }
+.aj-urgent-texte { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.aj-urgent-tache { font-weight: 500; white-space: normal; overflow-wrap: anywhere; }
+.aj-urgent-projet { font-size: 12px; color: var(--texte-doux); }
+.tache.surligne { animation: surligne-tache 1.6s ease-out; }
+@keyframes surligne-tache { 0%, 35% { background: var(--selection); box-shadow: 0 0 0 2px var(--encre); } 100% { background: transparent; box-shadow: none; } }
+@media (prefers-reduced-motion: reduce) { .tache.surligne { animation: none; } }
+@media print {
+  .pastille-tache[data-couleur="blanc"] { display: none !important; }
+  .pastille-tache, .pastille-fixe { -webkit-print-color-adjust: exact; print-color-adjust: exact; opacity: 1 !important; }
+}

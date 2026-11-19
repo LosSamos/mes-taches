@@ -298,7 +298,7 @@
     fermerPopover();
     const el = h('div', { class: 'popover ' + classe, role: 'dialog', 'aria-label': titre || null }, contenu);
     document.body.append(el);
-    pop = { el, ancre };
+    pop = { el, ancre, aligner };
     ancre.setAttribute('aria-expanded', 'true');
     positionner();
     setTimeout(() => {
@@ -461,6 +461,12 @@
       if (x.le <= quand) c = x.couleur; else if (c === null) c = x.couleur;
     }
     return c || projet.couleur;
+  }
+
+  /** Couleur qui compte pour une tâche : la sienne si elle en a une, sinon celle de son projet (à un moment donné). */
+  function couleurEffective(t, projet, historique = null, quand = null) {
+    if (t.couleur && t.couleur !== 'blanc') return t.couleur;
+    return historique && quand ? couleurA(historique, projet, quand) : projet.couleur;
   }
 
   function libelleRecurrence(r) {
@@ -920,8 +926,10 @@
       let taches = tachesDe(p.id);
       if (du) taches = taches.filter((t) => t.cree_le >= du && t.cree_le <= au);
       if (f.couleur !== 'toutes') {
-        if (du) taches = taches.filter((t) => COULEURS[couleurA(S.couleurs, p, t.cree_le)]?.groupe === f.couleur);
-        else if (COULEURS[p.couleur]?.groupe !== f.couleur) continue;
+        const vide = !taches.length;
+        taches = taches.filter((t) => COULEURS[couleurEffective(t, p, du ? S.couleurs : null, du ? t.cree_le : null)]?.groupe === f.couleur);
+        // Un projet sans tâche reste visible s'il a lui-même la couleur cherchée.
+        if (!taches.length && !(vide && !du && COULEURS[p.couleur]?.groupe === f.couleur)) continue;
       }
       if (du && !taches.length) continue;
       resultat.push({ projet: p, taches });
@@ -986,10 +994,15 @@
   }
 
   const projetsUrgents = () => S.projets.filter((p) => COULEURS[p.couleur]?.groupe === 'urgent');
+  const tachesUrgentes = () => {
+    const ordre = new Map(S.projets.map((p, i) => [p.id, i]));
+    return S.taches.filter((t) => COULEURS[t.couleur]?.groupe === 'urgent' && projetPar(t.projet_id) && projetPar(t.projet_id).couleur !== 'gris')
+      .sort((a, b) => ordre.get(a.projet_id) - ordre.get(b.projet_id) || a.ordre - b.ordre);
+  };
 
   function resumeAujourdhui() {
     const ag = Agenda.etat();
-    const n = { rdv: ag.statut === 'ok' || ag.statut === 'hors-ligne' ? ag.evenements.length : null, taches: tachesDuJour().length, urgents: projetsUrgents().length };
+    const n = { rdv: ag.statut === 'ok' || ag.statut === 'hors-ligne' ? ag.evenements.length : null, taches: tachesDuJour().length, urgents: projetsUrgents().length + tachesUrgentes().length };
     const morceaux = [];
     if (n.rdv !== null) morceaux.push(`${n.rdv} rendez-vous`);
     morceaux.push(`${n.taches} tâche${n.taches > 1 ? 's' : ''}`);
@@ -1107,9 +1120,10 @@
 
   function sectionUrgents() {
     const liste = projetsUrgents();
+    const taches = tachesUrgentes();
     return h('div', { class: 'aj-section' },
       titreSection('horloge', 'Urgent'),
-      liste.length
+      liste.length || taches.length
         ? h('ul', { class: 'aj-liste' }, liste.map((p) => {
           const n = joursEntre(lireDate(p.couleur_depuis), new Date());
           const nb = S.taches.filter((t) => t.projet_id === p.id).length;
@@ -1117,14 +1131,24 @@
             h('span', { class: 'aj-pastille fond-couleur', 'data-couleur': p.couleur, 'aria-hidden': 'true' }),
             h('span', { class: 'aj-urgent-titre' }, p.titre),
             h('span', { class: 'aj-urgent-detail' }, `${nb} tâche${nb > 1 ? 's' : ''} · ${n <= 0 ? 'aujourd’hui' : `depuis ${n} j`}`)));
+        }), taches.map((t) => {
+          const p = projetPar(t.projet_id);
+          const texte = h('span', { class: 'aj-urgent-titre aj-urgent-tache' });
+          afficherTexte(texte, t.texte);
+          const n = t.couleur_depuis ? joursEntre(lireDate(t.couleur_depuis), new Date()) : 0;
+          return h('li', null, h('button', { type: 'button', class: 'aj-urgent', onclick: () => allerAuProjet(p.id, t.id) },
+            h('span', { class: 'aj-pastille aj-pastille-tache fond-couleur', 'data-couleur': t.couleur, 'aria-hidden': 'true' }),
+            h('span', { class: 'aj-urgent-texte' }, texte, h('span', { class: 'aj-urgent-projet' }, p.titre)),
+            h('span', { class: 'aj-urgent-detail' }, n <= 0 ? 'aujourd’hui' : `depuis ${n} j`)));
         }))
         : h('p', { class: 'aj-vide' }, 'Aucun projet urgent.'));
   }
 
   /** Fait défiler jusqu'au projet (en retirant les filtres qui le cacheraient). */
-  function allerAuProjet(id) {
-    if (!$(`.tuile[data-id="${CSS.escape(id)}"]`)) { S.filtre = { groupement: null, couleur: 'toutes', du: null, au: null }; rendre(); }
-    const el = $(`.tuile[data-id="${CSS.escape(id)}"]`);
+  function allerAuProjet(id, tacheId = null) {
+    const cible = () => (tacheId ? $(`.tuile .tache[data-id="${CSS.escape(tacheId)}"]`) : $(`.tuile[data-id="${CSS.escape(id)}"]`));
+    if (!cible()) { S.filtre = { groupement: null, couleur: 'toutes', du: null, au: null }; rendre(); }
+    const el = cible();
     if (!el) return;
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     el.classList.remove('surligne'); void el.offsetWidth; el.classList.add('surligne');
@@ -1170,7 +1194,7 @@
       h('div', { class: 'rangee puces-defile', role: 'group', 'aria-label': 'Couleur' },
         FILTRES_COULEUR.map((c) => h('button', {
           type: 'button', class: 'puce puce-petite', 'aria-pressed': String(f.couleur === c.cle),
-          title: c.cle !== 'toutes' && f.du ? 'Selon la couleur du projet à la date de création de chaque tâche' : null,
+          title: c.cle !== 'toutes' ? 'Selon la couleur de chaque tâche, ou celle de son projet si la tâche n’en a pas' : null,
           onclick: () => { f.couleur = c.cle; rendre(); },
         }, c.points && points(c.points), c.libelle))));
   }
@@ -1224,9 +1248,42 @@
 
     const li = h('li', { class: 'tache', 'data-id': t.id },
       h('input', { type: 'checkbox', 'aria-label': `Archiver : ${texteBrut(t.texte)}`, onchange: (e) => finaliser(t, li, e.currentTarget) }),
+      pastilleTache(t),
       texte, rec,
       h('span', { class: 'tache-date', title: `Créée le ${dateLongue(cree)}` }, dateCourte(cree)));
     return li;
+  }
+
+  function pastilleTache(t) {
+    const c = t.couleur || 'blanc';
+    const nom = COULEURS[c]?.nom || 'blanc';
+    const depuis = c !== 'blanc' && t.couleur_depuis ? ` depuis le ${fmtCourt.format(lireDate(t.couleur_depuis))}` : '';
+    return h('button', {
+      type: 'button', class: 'pastille-tache', 'data-couleur': c, 'aria-haspopup': 'dialog', 'aria-expanded': 'false',
+      'aria-label': c === 'blanc' ? 'Donner une couleur à cette tâche' : `Couleur : ${nom}${depuis}. Changer la couleur`,
+      title: c === 'blanc' ? 'Couleur de la tâche' : `${nom.charAt(0).toUpperCase() + nom.slice(1)}${depuis}`,
+      onclick: (e) => menuCouleurTache(e.currentTarget, t),
+    }, h('span', { class: 'rond' }));
+  }
+
+  function menuCouleurTache(ancre, t) {
+    const actuelle = t.couleur || 'blanc';
+    const nuance = (c) => h('button', {
+      type: 'button', class: 'nuance', 'data-couleur': c, 'aria-label': c === 'blanc' ? 'Aucune couleur' : COULEURS[c].nom,
+      'aria-pressed': String(actuelle === c), onclick: () => { fermerPopover(true); if (c !== actuelle) changerCouleurTache(t, c); },
+    }, h('span', { class: 'rond fond-couleur' }));
+    ouvrirPopover(ancre, [
+      h('div', null, h('div', { class: 'groupe-libelle' }, 'Urgent'), h('div', { class: 'nuancier' }, ['vert', 'jaune', 'orange', 'rouge'].map(nuance))),
+      h('div', null, h('div', { class: 'groupe-libelle' }, 'À prévoir'), h('div', { class: 'nuancier' }, ['vert-p', 'jaune-p', 'orange-p', 'rouge-p'].map(nuance))),
+      h('div', null, h('div', { class: 'groupe-libelle' }, 'Aucune'), h('div', { class: 'nuancier' }, [nuance('blanc')])),
+    ], { titre: 'Couleur de la tâche', aligner: 'gauche' });
+  }
+
+  async function changerCouleurTache(t, c) {
+    const r = await essayer(() => api('tache_modifier', { methode: 'POST', donnees: { id: t.id, couleur: c } }));
+    if (!r) return;
+    Object.assign(t, r.tache);
+    if (!editionActive) rendre();
   }
 
   function sectionCompletes(liste) {
@@ -1683,7 +1740,7 @@
       if (a.groupement && p.groupement !== a.groupement) continue;
       if (a.couleur !== 'toutes') {
         const quand = a.type === 'cree' ? t.cree_le : t.finalise_le;
-        if (COULEURS[couleurA(d.couleurs, p, quand)]?.groupe !== a.couleur) continue;
+        if (COULEURS[couleurEffective(t, p, d.couleurs, quand)]?.groupe !== a.couleur) continue;
       }
       if (!groupes.has(p.id)) groupes.set(p.id, { projet: p, taches: [] });
       groupes.get(p.id).taches.push(t);
@@ -1719,7 +1776,7 @@
       h('div', { class: 'rangee', role: 'group', 'aria-label': 'Couleur' },
         FILTRES_COULEUR.map((c) => h('button', {
           type: 'button', class: 'puce puce-petite', 'aria-pressed': String(a.couleur === c.cle),
-          title: c.cle !== 'toutes' ? `Selon la couleur du projet à la date de ${a.type === 'cree' ? 'création' : 'finalisation'}` : null,
+          title: c.cle !== 'toutes' ? `Selon la couleur de la tâche, ou celle de son projet à la date de ${a.type === 'cree' ? 'création' : 'finalisation'}` : null,
           onclick: () => { a.couleur = c.cle; rendre(); },
         }, c.points && points(c.points), c.libelle))));
 
@@ -1745,6 +1802,7 @@
           const texte = h('span', { class: 'tache-texte' });
           afficherTexte(texte, t.texte);
           return h('li', { class: 'arch-tache' },
+            t.couleur && t.couleur !== 'blanc' ? h('span', { class: 'pastille-fixe', 'data-couleur': t.couleur, title: `Couleur : ${COULEURS[t.couleur]?.nom}` }, h('span', { class: 'rond' })) : null,
             texte,
             t.recurrence && h('span', { class: 'rec' }, icone('recurrence', 12, 2.2), libelleRecurrence(t.recurrence)),
             h('span', { class: 'meta', title: `Créée le ${dateLongue(lireDate(t.cree_le))}` }, `créée ${dateCourte(lireDate(t.cree_le))}`),
