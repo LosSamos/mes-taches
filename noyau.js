@@ -270,9 +270,11 @@
       const projets = Object.values(M.projets).filter((p) => !p.archive_le).sort(parOrdre).map(versProjet);
       const actifs = new Set(projets.map((p) => p.id));
       const m = maintenant();
+      // Tâches apparues par récurrence (copie créée quand l'occurrence précédente a été cochée).
+      const occurrences = new Set(Object.values(M.taches).map((t) => t.copie_uid).filter(Boolean));
       const taches = Object.values(M.taches)
         .filter((t) => !t.finalise_le && t.cree_le <= m && actifs.has(t.projet_id))
-        .sort(parOrdre).map(versTache);
+        .sort(parOrdre).map((t) => ({ ...versTache(t), occurrence: occurrences.has(t.id) }));
       return {
         projets, taches,
         couleurs: historique(projets.map((p) => p.id)),
@@ -831,7 +833,7 @@
    * ======================================================= */
 
   window.Noyau = {
-    VERSION_APP: '2.0.1',
+    VERSION_APP: '2.1.0',
     GROUPEMENTS, COULEURS, ErreurNoyau,
     api,
     get modele() { return M; },

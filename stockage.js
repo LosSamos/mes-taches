@@ -12,6 +12,11 @@
   const CFG = window.MES_TACHES_CONFIG || {};
   const API = String(CFG.driveApi || 'https://www.googleapis.com').replace(/\/$/, '');
   const PORTEE = 'https://www.googleapis.com/auth/drive.file';
+  // Google Agenda, en lecture seule : la liste des agendas et leurs événements.
+  const PORTEES_AGENDA = [
+    'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
+    'https://www.googleapis.com/auth/calendar.events.readonly',
+  ];
   const NOM_DOSSIER = 'Mes tâches';
   const NOM_FICHIER = 'mes-taches.coffre';
   const COPIES_GARDEES = 60;
@@ -55,7 +60,8 @@
     enveloppe: null,   // en-tête du coffre (clés enveloppées), sans les données
     cle: null,         // clé de données (non exportable)
     drive: { actif: false, compte: null, dossier_id: null, fichier_id: null, version: null, derniere_copie: null, dernier_envoi: null },
-    jeton: null,       // { access_token, expire }
+    jeton: null,       // { access_token, expire, portees }
+    agenda: false,     // afficher Google Agenda sur cet appareil
     generation: 0,     // augmente à chaque modification locale
     generationEnvoyee: 0,
     statut: 'local',
@@ -111,8 +117,9 @@
   let clientJeton = null;
   let attenteJeton = null;
 
-  /** Demande un jeton d'accès. À appeler depuis un clic (sinon le navigateur bloque la fenêtre Google). */
-  async function connecterGoogle() {
+  /** Demande un jeton d'accès. À appeler depuis un clic (sinon le navigateur bloque la fenêtre Google).
+   *  Le même jeton sert à Drive et, si elle est activée, à Google Agenda : un seul clic renouvelle les deux. */
+  async function connecterGoogle({ agenda = E.agenda } = {}) {
     if (!googleConfigure()) throw new ErreurSync("La connexion Google n'est pas encore configurée (config.js).");
     const oauth2 = await attendreGIS();
     if (!clientJeton) {
@@ -134,11 +141,15 @@
     }
     const reponse = await new Promise((ok, ko) => {
       attenteJeton = { ok, ko };
-      const options = { prompt: '' };
+      const options = { prompt: '', scope: [PORTEE, ...(agenda ? PORTEES_AGENDA : [])].join(' '), include_granted_scopes: true };
       if (E.drive.compte) options.login_hint = E.drive.compte;
       clientJeton.requestAccessToken(options);
     });
-    E.jeton = { access_token: reponse.access_token, expire: Date.now() + (Number(reponse.expires_in || 3600) - 120) * 1000 };
+    E.jeton = {
+      access_token: reponse.access_token,
+      expire: Date.now() + (Number(reponse.expires_in || 3600) - 120) * 1000,
+      portees: String(reponse.scope || PORTEE),
+    };
     await ecrire('jeton', E.jeton);
     try {
       const a = await requete('GET', '/drive/v3/about', { query: { fields: 'user(emailAddress)' } });
@@ -148,6 +159,12 @@
   }
 
   const jetonValide = () => Boolean(E.jeton && E.jeton.expire > Date.now());
+  const agendaAutorise = () => jetonValide() && PORTEES_AGENDA.every((p) => String(E.jeton.portees || '').split(/\s+/).includes(p));
+
+  async function reglerAgenda(actif) {
+    E.agenda = Boolean(actif);
+    await ecrire('agenda', E.agenda);
+  }
 
   /* =========================================================
    * Google Drive : requêtes REST
@@ -174,7 +191,9 @@
     if (!rep.ok) {
       let detail = '';
       try { detail = (await rep.json()).error?.message || ''; } catch { /* rien */ }
-      throw new ErreurSync(`Google Drive a refusé la demande (${rep.status}${detail ? ' : ' + detail : ''}).`, rep.status >= 500 || rep.status === 429 ? 'reseau' : 'drive');
+      const err = new ErreurSync(`Google Drive a refusé la demande (${rep.status}${detail ? ' : ' + detail : ''}).`, rep.status >= 500 || rep.status === 429 ? 'reseau' : 'drive');
+      err.statut = rep.status;
+      throw err;
     }
     if (rep.status === 204) return null;
     return texte ? rep.text() : rep.json();
@@ -241,6 +260,7 @@
     const d = await lire('drive');
     if (d) Object.assign(E.drive, d);
     E.jeton = (await lire('jeton')) || null;
+    E.agenda = Boolean(await lire('agenda'));
     const c = await lire('coffre');
     if (c) { E.generation = c.en_attente ? 1 : 0; E.generationEnvoyee = 0; }
     definirStatut(E.drive.actif ? (jetonValide() ? 'ok' : 'reconnexion') : 'local');
@@ -612,7 +632,7 @@
 
   /** Efface tout ce que l'app garde sur cet appareil (le Drive n'est pas touché). */
   async function oublierAppareil() {
-    E.cle = null; E.enveloppe = null; E.jeton = null;
+    E.cle = null; E.enveloppe = null; E.jeton = null; E.agenda = false;
     E.drive = { actif: false, compte: null, dossier_id: null, fichier_id: null, version: null, derniere_copie: null, dernier_envoi: null };
     Noyau.vider();
     await toutEffacer();
@@ -634,10 +654,12 @@
     ErreurSync,
     chargerEtat, etat, reprendre, deverrouiller, recuperer, creer, verrouiller, changerMotDePasse, nouvelleCleRecuperation,
     marquerChangement, enregistrerMaintenant, synchroniser, prolonger, memoriserCle,
-    connecterGoogle, googleConfigure, jetonValide, recupererDuDrive, activerDrive, remplacerCoffreDrive, prendreCoffreDrive,
+    connecterGoogle, googleConfigure, jetonValide, agendaAutorise, reglerAgenda, recupererDuDrive, activerDrive, remplacerCoffreDrive, prendreCoffreDrive,
     deconnecterDrive, oublierAppareil, listerCopies, restaurerCopie, copieAvant,
     surStatut(f) { ecouteurs.statut.add(f); return () => ecouteurs.statut.delete(f); },
     surDistant(f) { ecouteurs.distant.add(f); return () => ecouteurs.distant.delete(f); },
     get enveloppe() { return E.enveloppe; },
+    get agenda() { return E.agenda; },
+    requeteGoogle: (chemin, query) => requete('GET', chemin, { query }),
   };
 })();

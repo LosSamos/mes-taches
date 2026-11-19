@@ -490,6 +490,7 @@
     enregistrerServiceWorker();
     Noyau.surChangement(() => Sync.marquerChangement());
     Sync.surStatut(majPuceSync);
+    Agenda.surChangement(majAgenda);
     Sync.surDistant(() => { if (S.ouvert) rafraichirDepuisDistant(true); });
     let info;
     try {
@@ -513,6 +514,7 @@
     rendre();
     demarrerVeille();
     Sync.synchroniser().catch(() => {});
+    Agenda.demarrer().catch(() => {});
   }
 
   function marque() {
@@ -751,6 +753,7 @@
     S.ouvert = false;
     clearInterval(minuterieVeille);
     S.projets = []; S.taches = []; S.couleurs = []; S.arch.donnees = null; S.compte.info = null;
+    Agenda.vider();
     $('#toasts').replaceChildren();
     await Sync.verrouiller();
     afficherDeverrouillage({ raison });
@@ -794,13 +797,7 @@
     else allerA('compte');
   }
 
-  async function reconnecterDrive() {
-    await essayer(async () => {
-      await Sync.connecterGoogle();
-      await Sync.synchroniser();
-      if (S.vue === 'compte') await chargerCompte();
-    });
-  }
+  const reconnecterDrive = () => reconnecterGoogle();
 
   /** Changements arrivés d'un autre appareil. */
   async function rafraichirDepuisDistant(annoncer = false) {
@@ -872,7 +869,7 @@
     while (apresRenduFile.length) apresRenduFile.shift()();
   }
 
-  function entete() {
+  function entete(sousLaDate = null) {
     const lundi = lundiDe(new Date());
     const nbEnCours = S.taches.length;
     return h('header', { class: 'entete' },
@@ -880,6 +877,7 @@
         h('div', null,
           h('h1', null, 'Mes tâches'),
           h('p', { class: 'sous-titre' }, `Semaine du ${fmtJourMois.format(lundi)}`, puceSync())),
+        sousLaDate,
         h('div', { class: 'actions-entete' },
           h('button', { type: 'button', class: 'bouton', onclick: imprimer }, icone('imprimer'), h('span', { class: 'libelle-option' }, 'Imprimer')),
           h('button', { type: 'button', class: 'bouton', onclick: () => allerA('compte') }, icone('compte'), h('span', { class: 'libelle-option' }, 'Compte')),
@@ -948,12 +946,206 @@
         h('button', { type: 'button', class: 'bouton', onclick: () => { S.filtre = { groupement: null, couleur: 'toutes', du: null, au: null }; rendre(); } }, 'Effacer les filtres'));
     }
 
-    return h('div', { class: 'page' },
-      entete(),
+    const large = ecranLarge.matches;
+    const bloc = blocAujourdhui(large);
+    const contenu = [
+      entete(large ? null : bloc),
       filtresEnCours(),
       corps || null,
       actifs.length ? h('section', { class: 'tuiles', id: 'tuiles', 'aria-label': 'Projets' }, actifs.map(({ projet, taches }) => tuile(projet, taches))) : null,
-      completes.length ? sectionCompletes(completes) : null);
+      completes.length ? sectionCompletes(completes) : null,
+    ];
+    if (!large) return h('div', { class: 'page' }, ...contenu);
+    return h('div', { class: 'page page-avec-cote' },
+      h('aside', { class: 'cote sans-impression', 'aria-label': 'Aujourd’hui' }, bloc),
+      h('div', { class: 'principal' }, ...contenu));
+  }
+
+  /* ---------- Bloc « Aujourd'hui » ---------- */
+
+  // À gauche sur grand écran, sous la date sur téléphone et tablette.
+  const ecranLarge = window.matchMedia('(min-width: 1100px)');
+  ecranLarge.addEventListener?.('change', () => {
+    if (S.ouvert && S.vue === 'encours' && !editionActive && !pop && !document.querySelector('dialog[open]')) rendre();
+  });
+
+  const fmtJourSemaine = new Intl.DateTimeFormat('fr-CA', { weekday: 'long', day: 'numeric', month: 'long' });
+  const majuscule = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+
+  function lirePref(cle) { try { return localStorage.getItem(cle); } catch { return null; } }
+  function ecrirePref(cle, v) { try { localStorage.setItem(cle, v); } catch { /* préférence non gardée */ } }
+  S.ajReplie = lirePref('mes-taches-aujourdhui-replie') === '1';
+
+  /** Tâches revenues par récurrence aujourd'hui (ou avant, si elles ne sont pas encore cochées). */
+  function tachesDuJour() {
+    const fin = `${iso(new Date())} 23:59:59`;
+    const ordreProjet = new Map(S.projets.map((p, i) => [p.id, i]));
+    return S.taches
+      .filter((t) => t.occurrence && t.cree_le <= fin && projetPar(t.projet_id) && projetPar(t.projet_id).couleur !== 'gris')
+      .sort((a, b) => (a.cree_le < b.cree_le ? -1 : a.cree_le > b.cree_le ? 1 : 0) || ordreProjet.get(a.projet_id) - ordreProjet.get(b.projet_id) || a.ordre - b.ordre);
+  }
+
+  const projetsUrgents = () => S.projets.filter((p) => COULEURS[p.couleur]?.groupe === 'urgent');
+
+  function resumeAujourdhui() {
+    const ag = Agenda.etat();
+    const n = { rdv: ag.statut === 'ok' || ag.statut === 'hors-ligne' ? ag.evenements.length : null, taches: tachesDuJour().length, urgents: projetsUrgents().length };
+    const morceaux = [];
+    if (n.rdv !== null) morceaux.push(`${n.rdv} rendez-vous`);
+    morceaux.push(`${n.taches} tâche${n.taches > 1 ? 's' : ''}`);
+    morceaux.push(`${n.urgents} urgent${n.urgents > 1 ? 's' : ''}`);
+    return morceaux.join(' · ');
+  }
+
+  function blocAujourdhui(large) {
+    const replie = !large && S.ajReplie;
+    const titre = h('div', { class: 'aj-titre' },
+      h('h2', null, 'Aujourd’hui'),
+      h('span', { class: 'aj-date' }, majuscule(fmtJourSemaine.format(new Date()))));
+    const entete = large
+      ? h('div', { class: 'aj-entete' }, titre)
+      : h('button', {
+        type: 'button', class: 'aj-entete aj-bascule', 'aria-expanded': String(!replie), 'aria-controls': 'aj-corps',
+        onclick: () => { S.ajReplie = !S.ajReplie; ecrirePref('mes-taches-aujourdhui-replie', S.ajReplie ? '1' : '0'); rendre(); },
+      }, titre, replie ? h('span', { class: 'aj-resume', id: 'aj-resume' }, resumeAujourdhui()) : null, icone('bas', 16, 2.2));
+
+    return h('section', { class: 'aujourdhui sans-impression' + (replie ? ' replie' : ''), 'aria-label': 'Aujourd’hui' },
+      entete,
+      replie ? null : h('div', { class: 'aj-corps', id: 'aj-corps' },
+        sectionAgenda(),
+        sectionTachesDuJour(),
+        sectionUrgents()));
+  }
+
+  function titreSection(nom, texte, ...apres) {
+    return h('div', { class: 'aj-section-titre' }, icone(nom, 15, 2.2), h('h3', null, texte), ...apres);
+  }
+
+  const heureCourte = (d) => (d.getMinutes() ? heure(d) : `${d.getHours()} h`);
+
+  function plageHoraire(ev) {
+    if (ev.journee) return 'Journée';
+    const debutJour = aujourdhui(), finJour = plusJours(debutJour, 1);
+    if (ev.debut < debutJour && ev.fin > finJour) return 'Journée';
+    if (ev.debut < debutJour) return `→ ${heureCourte(ev.fin)}`;
+    if (ev.fin > finJour) return `${heureCourte(ev.debut)} →`;
+    return `${heureCourte(ev.debut)} – ${heureCourte(ev.fin)}`;
+  }
+
+  function sectionAgenda() {
+    const ag = Agenda.etat();
+    const masquer = h('button', { type: 'button', class: 'aj-lien', title: 'Ne plus afficher Google Agenda sur cet appareil', onclick: () => essayer(() => Agenda.desactiver()) }, 'Masquer');
+    const sec = (...enfants) => h('div', { class: 'aj-section', id: 'aj-agenda' }, ...enfants);
+
+    if (ag.statut === 'inactif') {
+      if (!Sync.googleConfigure()) return sec(titreSection('calendrier', 'Agenda'), h('p', { class: 'aj-vide' }, 'Google Agenda pourra s’afficher ici une fois Google configuré.'));
+      return sec(titreSection('calendrier', 'Agenda'),
+        h('p', { class: 'aj-vide' }, 'Affiche ici tes rendez-vous du jour, en lecture seule.'),
+        h('button', { type: 'button', class: 'bouton bouton-petit', onclick: (e) => occupe(e.currentTarget, 'Connexion…', () => essayer(() => Agenda.activer())) }, icone('calendrier', 14), 'Afficher mon Google Agenda'));
+    }
+    if (ag.statut === 'autoriser') {
+      return sec(titreSection('calendrier', 'Agenda', masquer),
+        h('p', { class: 'aj-vide' }, 'L’accès à Google Agenda n’est pas encore autorisé. Dans la fenêtre Google, coche les deux accès à l’agenda.'),
+        h('button', { type: 'button', class: 'bouton bouton-petit', onclick: (e) => occupe(e.currentTarget, 'Connexion…', () => essayer(() => Agenda.activer())) }, 'Autoriser l’accès'));
+    }
+    if (ag.statut === 'reconnexion') {
+      return sec(titreSection('calendrier', 'Agenda', masquer),
+        h('p', { class: 'aj-vide' }, 'La connexion à Google a expiré.'),
+        h('button', { type: 'button', class: 'bouton bouton-petit', onclick: (e) => occupe(e.currentTarget, 'Connexion…', () => reconnecterGoogle()) }, 'Reconnecter Google'));
+    }
+
+    let liste;
+    if (ag.statut === 'chargement' && !ag.evenements.length) liste = h('p', { class: 'aj-vide' }, 'Chargement…');
+    else if (ag.statut === 'erreur') {
+      liste = h('div', null, h('p', { class: 'aj-vide' }, ag.message),
+        h('button', { type: 'button', class: 'bouton bouton-petit', onclick: () => Agenda.charger({ force: true }) }, 'Réessayer'));
+    } else if (!ag.evenements.length) {
+      liste = h('p', { class: 'aj-vide' }, ag.statut === 'hors-ligne' ? 'Hors ligne : l’agenda s’affichera au retour d’Internet.' : 'Aucun rendez-vous aujourd’hui.');
+    } else {
+      const maintenant = new Date();
+      liste = h('ul', { class: 'aj-liste aj-evenements' }, ag.evenements.map((ev) => {
+        const passe = !ev.journee && ev.fin <= maintenant;
+        const enCours = !ev.journee && ev.debut <= maintenant && ev.fin > maintenant;
+        const nom = ev.lien
+          ? h('a', { href: ev.lien, target: '_blank', rel: 'noopener noreferrer', class: 'aj-ev-titre' }, ev.titre)
+          : h('span', { class: 'aj-ev-titre' }, ev.titre);
+        // Couleur de l'agenda posée par le CSSOM : la politique de sécurité refuse les attributs style.
+        const barre = h('span', { class: 'aj-ev-barre', 'aria-hidden': 'true' });
+        if (/^#[0-9a-f]{3,8}$/i.test(ev.couleur || '')) barre.style.background = ev.couleur;
+        return h('li', { class: 'aj-ev' + (passe ? ' passe' : '') + (enCours ? ' en-cours' : '') },
+          barre,
+          h('span', { class: 'aj-ev-heure' }, plageHoraire(ev)),
+          h('span', { class: 'aj-ev-texte' }, nom,
+            (ev.lieu || ev.agenda) ? h('span', { class: 'aj-ev-detail' }, [ev.lieu, ev.agenda].filter(Boolean).join(' · ')) : null,
+            enCours ? h('span', { class: 'visuellement-cache' }, ' (en cours)') : null));
+      }));
+    }
+    return sec(titreSection('calendrier', 'Agenda',
+      ag.statut === 'hors-ligne' && ag.evenements.length ? h('span', { class: 'aj-note' }, 'hors ligne') : null, masquer), liste);
+  }
+
+  function sectionTachesDuJour() {
+    const liste = tachesDuJour();
+    const today = iso(new Date());
+    return h('div', { class: 'aj-section' },
+      titreSection('recurrence', 'À faire'),
+      liste.length
+        ? h('ul', { class: 'aj-liste' }, liste.map((t) => {
+          const p = projetPar(t.projet_id);
+          const texte = h('span', { class: 'aj-tache-texte' });
+          afficherTexte(texte, t.texte);
+          const jour = t.cree_le.slice(0, 10);
+          const li = h('li', { class: 'tache aj-tache' },
+            h('input', { type: 'checkbox', 'aria-label': `Archiver : ${texteBrut(t.texte)}`, onchange: (e) => finaliser(t, li, e.currentTarget) }),
+            h('span', { class: 'aj-tache-corps' }, texte,
+              h('button', { type: 'button', class: 'aj-tache-projet', onclick: () => allerAuProjet(p.id) },
+                p.titre, jour < today ? ` · depuis le ${fmtCourt.format(lireDate(t.cree_le))}` : '')));
+          return li;
+        }))
+        : h('p', { class: 'aj-vide' }, 'Aucune tâche répétée pour aujourd’hui.'));
+  }
+
+  function sectionUrgents() {
+    const liste = projetsUrgents();
+    return h('div', { class: 'aj-section' },
+      titreSection('horloge', 'Urgent'),
+      liste.length
+        ? h('ul', { class: 'aj-liste' }, liste.map((p) => {
+          const n = joursEntre(lireDate(p.couleur_depuis), new Date());
+          const nb = S.taches.filter((t) => t.projet_id === p.id).length;
+          return h('li', null, h('button', { type: 'button', class: 'aj-urgent', onclick: () => allerAuProjet(p.id) },
+            h('span', { class: 'aj-pastille fond-couleur', 'data-couleur': p.couleur, 'aria-hidden': 'true' }),
+            h('span', { class: 'aj-urgent-titre' }, p.titre),
+            h('span', { class: 'aj-urgent-detail' }, `${nb} tâche${nb > 1 ? 's' : ''} · ${n <= 0 ? 'aujourd’hui' : `depuis ${n} j`}`)));
+        }))
+        : h('p', { class: 'aj-vide' }, 'Aucun projet urgent.'));
+  }
+
+  /** Fait défiler jusqu'au projet (en retirant les filtres qui le cacheraient). */
+  function allerAuProjet(id) {
+    if (!$(`.tuile[data-id="${CSS.escape(id)}"]`)) { S.filtre = { groupement: null, couleur: 'toutes', du: null, au: null }; rendre(); }
+    const el = $(`.tuile[data-id="${CSS.escape(id)}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.remove('surligne'); void el.offsetWidth; el.classList.add('surligne');
+    setTimeout(() => el.classList.remove('surligne'), 1600);
+  }
+
+  /** Met à jour l'agenda sans redessiner la page (rien n'est perdu en cours d'édition). */
+  function majAgenda() {
+    if (!S.ouvert || S.vue !== 'encours') return;
+    const el = $('#aj-agenda');
+    if (el) el.replaceWith(sectionAgenda());
+    const r = $('#aj-resume');
+    if (r) r.textContent = resumeAujourdhui();
+  }
+
+  async function reconnecterGoogle() {
+    await essayer(async () => {
+      await Sync.connecterGoogle();
+      await Promise.all([Sync.synchroniser(), Agenda.charger({ force: true })]);
+      if (S.vue === 'compte') await chargerCompte();
+    });
   }
 
   function filtresEnCours() {
@@ -1712,6 +1904,7 @@
     if (!ok) return;
     await Sync.deconnecterDrive();
     S.compte.copies = null;
+    Agenda.charger({ force: true }).catch(() => {});
     rendre();
   }
 
@@ -2066,6 +2259,17 @@
   setInterval(() => {
     if (S.distantEnAttente && S.ouvert && !editionActive && !pop && !document.querySelector('dialog[open]')) rafraichirDepuisDistant(true);
   }, 3000);
+  // Chaque minute : nouveau jour (bloc « Aujourd'hui » à refaire) ou simple mise à jour de l'agenda.
+  let jourAffiche = iso(new Date());
+  setInterval(async () => {
+    if (!S.ouvert) return;
+    const jour = iso(new Date());
+    if (jour !== jourAffiche) {
+      jourAffiche = jour;
+      if (S.vue === 'encours' && !editionActive && !pop && !document.querySelector('dialog[open]')) { await essayer(charger); rendre(); }
+      Agenda.charger({ force: true }).catch(() => {});
+    } else majAgenda();
+  }, 60000);
   // Les minuteries sont ralenties en arrière-plan : on vérifie la veille au retour.
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') verifierVeille(); });
   window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); S.installation = e; });

@@ -10,6 +10,7 @@ Liste de tâches par projets, sans serveur. Les tâches sont chiffrées dans le 
 | `noyau.js` | projets, tâches, récurrence, archives, fusion entre appareils, .zip |
 | `coffre.js` | chiffrement (AES-256-GCM, PBKDF2-SHA-256 600 000 itérations, clé de récupération) |
 | `stockage.js` | stockage sur l'appareil (IndexedDB) et synchronisation Google Drive |
+| `agenda.js` | Google Agenda en lecture seule, pour le bloc « Aujourd'hui » |
 | `config.js` | **le seul fichier à remplir** : l'identifiant client Google |
 | `sw.js`, `manifest.webmanifest`, `icone-*` | installation et fonctionnement hors ligne |
 
@@ -46,11 +47,21 @@ Ces réglages peuvent prendre de 5 minutes à quelques heures avant d'être acti
 
 L'ID client n'est pas un secret : il dit seulement à Google quelle app demande l'accès. Il n'y a aucun « secret client » dans cette app.
 
+### Google Agenda (facultatif, pour le bloc « Aujourd'hui »)
+
+1. **API et services → Bibliothèque** : activer **Google Calendar API**.
+2. **Google Auth Platform → Accès aux données → Ajouter ou supprimer des niveaux d'accès** : cocher
+   `.../auth/calendar.calendarlist.readonly` et `.../auth/calendar.events.readonly`, puis **Mettre à jour** et **Save**.
+3. Dans l'app, bloc « Aujourd'hui » → **Afficher mon Google Agenda**, puis cocher les deux accès à l'agenda dans la fenêtre Google.
+
+L'agenda est lu seulement, jamais modifié. Les rendez-vous restent en mémoire : ils ne sont écrits ni sur l'appareil ni dans le Drive, et sont oubliés au verrouillage. Le réglage vaut pour l'appareil (« Masquer » le retire).
+
 ## 3. Utilisation
 
 - **Premier appareil :** « Continuer avec Google Drive », choisir un mot de passe (12 caractères ou plus), puis ranger la **clé de récupération** affichée.
 - **Autre appareil, ou PC remplacé :** ouvrir l'adresse, « Continuer avec Google Drive », entrer le mot de passe. Tout revient.
 - **Installer :** dans Chrome ou Edge, icône d'installation dans la barre d'adresse. Sur iPhone : Partager → « Sur l'écran d'accueil ». Sur Android : menu ⋮ → « Installer l'application ».
+- **Aujourd'hui :** à gauche sur grand écran, sous la date sur téléphone (repliable). Rendez-vous du jour (Google Agenda), tâches répétées revenues aujourd'hui (cochables), projets urgents (un clic mène au projet).
 - **Compte :** mot de passe, nouvelle clé de récupération, mise en veille, Google Drive, copies, export et import .zip, effacement de l'appareil.
 
 ## 4. Publier une nouvelle version
@@ -66,7 +77,7 @@ L'ID client n'est pas un secret : il dit seulement à Google quelle app demande 
 - Chiffrement de bout en bout : Google ne stocke qu'un fichier illisible.
 - Une clé de données aléatoire chiffre les tâches. Elle est enveloppée par le mot de passe et par la clé de récupération. Changer le mot de passe ne réécrit que l'enveloppe.
 - Aucun mot de passe n'est stocké, nulle part.
-- Accès Google limité à `drive.file` : l'app ne voit que les fichiers qu'elle a créés.
+- Accès Google limité à `drive.file` : l'app ne voit que les fichiers qu'elle a créés. Google Agenda, si activé : lecture seule.
 - Mise en veille : la clé est effacée de la mémoire après le délai choisi (15 minutes par défaut).
 - Politique de sécurité du contenu (CSP) stricte : seuls les fichiers de l'app et les services Google nécessaires sont autorisés.
 - Points d'attention : protéger le compte GitHub et le compte Google par la double authentification ; choisir une phrase de passe longue. **Sans le mot de passe ni la clé de récupération, les tâches sont irrécupérables.**
