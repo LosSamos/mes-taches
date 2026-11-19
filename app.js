@@ -21,6 +21,8 @@
     'blanc':    { nom: 'blanc',         groupe: 'defaut' },
     'gris':     { nom: 'gris',          groupe: 'complete' },
   };
+  // Couleurs des projets (2.16) : pour reconnaître, pas pour la priorité.
+  for (const c of Noyau.PALETTE_PROJET) COULEURS[c.id] = { nom: c.nom, groupe: 'projet' };
   const FILTRES_COULEUR = [
     { cle: 'toutes', libelle: 'Toutes les couleurs' },
     { cle: 'urgent', libelle: 'Urgent', points: ['vert', 'jaune', 'orange', 'rouge'] },
@@ -481,21 +483,9 @@
   const projetPar = (id) => S.projets.find((p) => p.id === id);
   const tachesDe = (pid) => S.taches.filter((t) => t.projet_id === pid).sort((a, b) => a.ordre - b.ordre || (a.cree_le < b.cree_le ? -1 : a.cree_le > b.cree_le ? 1 : 0));
 
-  /** Couleur qu'avait un projet à un moment donné (historique des couleurs). */
-  function couleurA(historique, projet, quand) {
-    let c = null;
-    for (const x of historique) {
-      if (x.projet_id !== projet.id) continue;
-      if (x.le <= quand) c = x.couleur; else if (c === null) c = x.couleur;
-    }
-    return c || projet.couleur;
-  }
-
-  /** Couleur qui compte pour une tâche : la sienne si elle en a une, sinon celle de son projet (à un moment donné). */
-  function couleurEffective(t, projet, historique = null, quand = null) {
-    if (t.couleur && t.couleur !== 'blanc') return t.couleur;
-    return historique && quand ? couleurA(historique, projet, quand) : projet.couleur;
-  }
+  /** Priorité d'une tâche (urgent, à prévoir, par défaut) : seulement sa propre pastille.
+      Depuis 2.16, la couleur du projet sert à le reconnaître, pas à la priorité. */
+  const groupeTache = (t) => COULEURS[t.couleur || 'blanc']?.groupe || 'defaut';
 
   function libelleRecurrence(r) {
     if (!r) return '';
@@ -993,10 +983,8 @@
       let taches = tachesDe(p.id);
       if (du) taches = taches.filter((t) => t.cree_le >= du && t.cree_le <= au);
       if (f.couleur !== 'toutes') {
-        const vide = !taches.length;
-        taches = taches.filter((t) => COULEURS[couleurEffective(t, p, du ? S.couleurs : null, du ? t.cree_le : null)]?.groupe === f.couleur);
-        // Un projet sans tâche reste visible s'il a lui-même la couleur cherchée.
-        if (!taches.length && !(vide && !du && COULEURS[p.couleur]?.groupe === f.couleur)) continue;
+        taches = taches.filter((t) => groupeTache(t) === f.couleur);
+        if (!taches.length) continue;
       }
       if (du && !taches.length) continue;
       // Recherche : un projet dont le nom correspond garde toutes ses tâches ; sinon, seulement les tâches qui correspondent.
@@ -1066,7 +1054,6 @@
       .sort((a, b) => (a.cree_le < b.cree_le ? -1 : a.cree_le > b.cree_le ? 1 : 0) || ordreProjet.get(a.projet_id) - ordreProjet.get(b.projet_id) || a.ordre - b.ordre);
   }
 
-  const projetsUrgents = () => S.projets.filter((p) => COULEURS[p.couleur]?.groupe === 'urgent');
   const tachesUrgentes = () => {
     const ordre = new Map(S.projets.map((p, i) => [p.id, i]));
     return S.taches.filter((t) => COULEURS[t.couleur]?.groupe === 'urgent' && projetPar(t.projet_id) && projetPar(t.projet_id).couleur !== 'gris')
@@ -1075,7 +1062,7 @@
 
   function resumeAujourdhui() {
     const ag = Agenda.etat();
-    const n = { rdv: ag.statut === 'ok' || ag.statut === 'hors-ligne' ? ag.evenements.length : null, taches: tachesDuJour().length, urgents: projetsUrgents().length + tachesUrgentes().length };
+    const n = { rdv: ag.statut === 'ok' || ag.statut === 'hors-ligne' ? ag.evenements.length : null, taches: tachesDuJour().length, urgents: tachesUrgentes().length };
     const morceaux = [];
     if (n.rdv !== null) morceaux.push(`${n.rdv} rendez-vous`);
     morceaux.push(`${n.taches} tâche${n.taches > 1 ? 's' : ''}`);
@@ -1199,19 +1186,11 @@
   }
 
   function sectionUrgents() {
-    const liste = projetsUrgents();
     const taches = tachesUrgentes();
     return h('div', { class: 'aj-section' },
       titreSection('horloge', 'Urgent'),
-      liste.length || taches.length
-        ? h('ul', { class: 'aj-liste' }, liste.map((p) => {
-          const n = joursEntre(lireDate(p.couleur_depuis), new Date());
-          const nb = S.taches.filter((t) => t.projet_id === p.id).length;
-          return h('li', null, h('button', { type: 'button', class: 'aj-urgent', onclick: () => allerAuProjet(p.id) },
-            h('span', { class: 'aj-pastille fond-couleur', 'data-couleur': p.couleur, 'aria-hidden': 'true' }),
-            h('span', { class: 'aj-urgent-titre' }, p.titre),
-            h('span', { class: 'aj-urgent-detail' }, `${nb} tâche${nb > 1 ? 's' : ''} · ${n <= 0 ? 'aujourd’hui' : `depuis ${n} j`}`)));
-        }), taches.map((t) => {
+      taches.length
+        ? h('ul', { class: 'aj-liste' }, taches.map((t) => {
           const p = projetPar(t.projet_id);
           const texte = h('span', { class: 'aj-urgent-titre aj-urgent-tache' });
           afficherTexte(texte, t.texte);
@@ -1221,7 +1200,7 @@
             h('span', { class: 'aj-urgent-texte' }, texte, h('span', { class: 'aj-urgent-projet' }, p.titre)),
             h('span', { class: 'aj-urgent-detail' }, n <= 0 ? 'aujourd’hui' : `depuis ${n} j`)));
         }))
-        : h('p', { class: 'aj-vide' }, 'Aucun projet urgent.'));
+        : h('p', { class: 'aj-vide' }, 'Aucune tâche urgente.'));
   }
 
   /* ---------- Bloc « Paiements à venir » (taxes) ---------- */
@@ -1740,12 +1719,6 @@
     titre.addEventListener('click', () => { if (titre.contentEditable !== 'true') editerTitre(p, titre); });
 
     const info = COULEURS[p.couleur] || COULEURS.blanc;
-    let age = null;
-    if (info.groupe === 'urgent') {
-      const n = joursEntre(lireDate(p.couleur_depuis), new Date());
-      age = h('span', { class: 'age', title: `Depuis le ${dateLongue(lireDate(p.couleur_depuis))}` },
-        `${info.nom} depuis ${n <= 0 ? 'aujourd’hui' : n + ' j'}`);
-    }
 
     const manuel = triProjets() === 'manuel';
     const poignee = manuel
@@ -1771,8 +1744,8 @@
         h('span', { class: 'tuile-meta' },
           h('button', { type: 'button', class: 'etiquette', 'aria-haspopup': 'menu', 'aria-expanded': 'false', title: 'Changer le groupement', onclick: (e) => menuGroupement(e.currentTarget, p) }, p.groupement),
           libelleCouleurImpression(p.couleur),
-          age, modif),
-        h('button', { type: 'button', class: 'bouton-couleur', 'aria-label': `Couleur : ${info.nom}. Changer la couleur`, 'aria-haspopup': 'dialog', 'aria-expanded': 'false', 'data-couleur': p.couleur, onclick: (e) => menuCouleur(e.currentTarget, p) },
+          modif),
+        h('button', { type: 'button', class: 'bouton-couleur', 'aria-label': `Couleur : ${info.nom}. Changer la couleur`, title: 'Couleur du projet', 'aria-haspopup': 'dialog', 'aria-expanded': 'false', 'data-couleur': p.couleur, onclick: (e) => menuCouleur(e.currentTarget, p) },
           h('span', { class: 'rond' })),
         h('button', { type: 'button', class: 'bouton-menu', 'aria-label': 'Autres actions', 'aria-haspopup': 'menu', 'aria-expanded': 'false', onclick: (e) => menuProjet(e.currentTarget, p) }, icone('menu', 18))),
       h('ul', { class: 'taches' }, taches.map((t) => ligneTache(t))),
@@ -1915,7 +1888,7 @@
   function trierTachesProjet(p, mode) {
     const taches = tachesDe(p.id);
     const avant = taches.map((t) => t.id);
-    const rang = (t) => ({ urgent: 0, aprevoir: 1 }[COULEURS[couleurEffective(t, p)]?.groupe] ?? 2);
+    const rang = (t) => ({ urgent: 0, aprevoir: 1 }[groupeTache(t)] ?? 2);
     const cmp = {
       alpha: (a, b) => texteBrut(a.texte).localeCompare(texteBrut(b.texte), 'fr', { sensitivity: 'base', numeric: true }),
       anciennes: (a, b) => (a.cree_le < b.cree_le ? -1 : a.cree_le > b.cree_le ? 1 : 0),
@@ -1932,7 +1905,7 @@
 
   function menuTriTaches(ancre, p) {
     menuChoix(ancre, 'Trier les tâches', [
-      { v: 'couleur', l: 'Urgentes d’abord (couleur)' },
+      { v: 'couleur', l: 'Urgentes d’abord (pastille)' },
       { v: 'alpha', l: 'Ordre alphabétique' },
       { v: 'anciennes', l: 'Plus anciennes d’abord' },
       { v: 'recentes', l: 'Plus récentes d’abord' },
@@ -2028,8 +2001,7 @@
   function libelleCouleurImpression(c) {
     const info = COULEURS[c];
     if (!info || c === 'blanc') return null;
-    const groupe = { urgent: 'Urgent', aprevoir: 'À prévoir', complete: 'Complété' }[info.groupe];
-    return h('span', { class: 'imp-libelle', 'aria-hidden': 'true' }, `${groupe} · ${info.nom}`);
+    return h('span', { class: 'imp-libelle', 'aria-hidden': 'true' }, c === 'gris' ? 'Complété' : info.nom);
   }
 
   function pastilleTache(t) {
@@ -2146,16 +2118,49 @@
     toast(`« ${p.titre} » est supprimé.`);
   }
 
+  /** Couleur du projet (2.16) : 60 petites cases, une colonne par famille (pâle en haut, foncé en bas). */
   function menuCouleur(ancre, p) {
-    const nuance = (c) => h('button', {
-      type: 'button', class: 'nuance', 'data-couleur': c, 'aria-label': COULEURS[c].nom + (c === 'gris' ? ', complété' : ''),
-      'aria-pressed': String(p.couleur === c), onclick: () => { fermerPopover(); if (c !== p.couleur) modifierProjet(p, { couleur: c }); },
-    }, h('span', { class: 'rond fond-couleur' }));
+    const choisir = (c) => { fermerPopover(); if (c !== p.couleur) modifierProjet(p, { couleur: c }); };
+    const familles = Noyau.FAMILLES_PROJET.length;
+    const parNuance = [];
+    for (let n = 1; n <= 6; n++) for (const c of Noyau.PALETTE_PROJET) if (c.nuance === n) parNuance.push(c);
+    const nomActuel = () => (COULEURS[p.couleur]?.groupe === 'projet' ? COULEURS[p.couleur].nom : '\u00a0');
+    const nom = h('span', { class: 'case-nom', 'aria-hidden': 'true' }, nomActuel());
+    const montrer = (c) => { nom.textContent = c ? COULEURS[c].nom : nomActuel(); };
+    const cases = parNuance.map((c) => {
+      const b = h('button', {
+        type: 'button', class: 'case-couleur fond-couleur', 'data-couleur': c.id, 'aria-label': c.nom, title: c.nom,
+        'aria-pressed': String(p.couleur === c.id), onclick: () => choisir(c.id),
+      });
+      b.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') montrer(c.id); });
+      b.addEventListener('focus', () => montrer(c.id));
+      return b;
+    });
+    const grille = h('div', { class: 'cases-couleurs', role: 'group', 'aria-label': 'Couleurs : une colonne par famille, de pâle à foncé' }, cases);
+    grille.addEventListener('pointerleave', () => montrer(null));
+    // Flèches : gauche/droite = famille, haut/bas = nuance.
+    grille.addEventListener('keydown', (e) => {
+      const i = cases.indexOf(document.activeElement);
+      if (i < 0) return;
+      const pas = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -familles, ArrowDown: familles }[e.key];
+      if (pas === undefined) return;
+      e.preventDefault();
+      const j = i + pas;
+      if (j >= 0 && j < cases.length) cases[j].focus();
+    });
+    const option = (c, libelle) => h('button', {
+      type: 'button', class: 'option-couleur', 'data-couleur': c, 'aria-pressed': String(p.couleur === c), onclick: () => choisir(c),
+    }, h('span', { class: 'case-mini fond-couleur', 'aria-hidden': 'true' }), libelle);
+    const ancienne = p.couleur !== 'blanc' && p.couleur !== 'gris' && COULEURS[p.couleur]?.groupe !== 'projet';
     ouvrirPopover(ancre, [
-      h('div', null, h('div', { class: 'groupe-libelle' }, 'Urgent'), h('div', { class: 'nuancier' }, ['vert', 'jaune', 'orange', 'rouge'].map(nuance))),
-      h('div', null, h('div', { class: 'groupe-libelle' }, 'À prévoir'), h('div', { class: 'nuancier' }, ['vert-p', 'jaune-p', 'orange-p', 'rouge-p'].map(nuance))),
-      h('div', null, h('div', { class: 'groupe-libelle' }, 'Par défaut · Complété'), h('div', { class: 'nuancier' }, ['blanc', 'gris'].map(nuance))),
-    ], { titre: 'Couleur du projet' });
+      grille,
+      h('div', { class: 'cases-pied' },
+        nom,
+        h('span', { class: 'cases-options' }, option('blanc', 'Aucune'), option('gris', 'Complété'))),
+      ancienne ? h('p', { class: 'cases-aide' }, 'Ancienne couleur de priorité : choisis-en une nouvelle au besoin. La priorité se donne maintenant aux tâches (pastille).') : null,
+    ], { titre: 'Couleur du projet', classe: 'popover-cases' });
+    const choisie = cases.find((b) => b.getAttribute('aria-pressed') === 'true');
+    if (choisie) choisie.focus({ preventScroll: true });
   }
 
   function menuGroupement(ancre, p) {
@@ -2524,8 +2529,7 @@
       if (!p) continue;
       if (a.groupement && p.groupement !== a.groupement) continue;
       if (a.couleur !== 'toutes') {
-        const quand = a.type === 'cree' ? t.cree_le : t.finalise_le;
-        if (COULEURS[couleurEffective(t, p, d.couleurs, quand)]?.groupe !== a.couleur) continue;
+        if (groupeTache(t) !== a.couleur) continue;
       }
       if (!groupes.has(p.id)) groupes.set(p.id, { projet: p, taches: [] });
       groupes.get(p.id).taches.push(t);
@@ -2561,7 +2565,7 @@
       h('div', { class: 'rangee', role: 'group', 'aria-label': 'Couleur' },
         FILTRES_COULEUR.map((c) => h('button', {
           type: 'button', class: 'puce puce-petite', 'aria-pressed': String(a.couleur === c.cle),
-          title: c.cle !== 'toutes' ? `Selon la couleur de la tâche, ou celle de son projet à la date de ${a.type === 'cree' ? 'création' : 'finalisation'}` : null,
+          title: c.cle !== 'toutes' ? 'Selon la pastille de la tâche' : null,
           onclick: () => { a.couleur = c.cle; rendre(); },
         }, c.points && points(c.points), c.libelle))));
 
@@ -2849,7 +2853,7 @@
     const aides = {
       couleur: 'En-têtes de projet colorés et pastilles, comme à l’écran.',
       eco: 'Fonds blancs : seul un mince trait de couleur à gauche du projet et les pastilles restent. Beaucoup moins d’encre.',
-      nb: 'Aucune encre de couleur. La couleur est écrite en toutes lettres (ex. « Urgent · rouge ») ; pastilles : ● vive, ○ pastel.',
+      nb: 'Aucune encre de couleur. La couleur du projet est écrite en toutes lettres (ex. « bleu 4 ») ; pastilles : ● vive, ○ pastel.',
     };
     return h('section', { class: 'carte carte-impression', 'aria-labelledby': 't-impression' },
       h('h2', { id: 't-impression' }, h('span', { class: 'pastille-icone' }, icone('imprimer', 18)), 'Impression'),

@@ -16,6 +16,23 @@
 
   const GROUPEMENTS = ['Entreprise', 'Proposition', 'Production', 'Développement', 'Innovation', 'Famille', 'Personnel', 'Entretien maison'];
   const COULEURS = ['vert', 'jaune', 'orange', 'rouge', 'vert-p', 'jaune-p', 'orange-p', 'rouge-p', 'blanc', 'gris'];
+  /* Couleurs des projets (2.16) : servent à reconnaître un projet ou un groupe, pas à la priorité.
+     10 familles × 6 nuances (1 = pâle … 6 = foncé). Les anciennes couleurs restent valides pour les projets existants. */
+  const FAMILLES_PROJET = [
+    ['rouge', 'rouge', ['#FDE2E1', '#F9B8B5', '#F28B87', '#E5534D', '#C62F2B', '#8E1C1A']],
+    ['orange', 'orange', ['#FFE8D4', '#FFCB9E', '#FFA866', '#F7862F', '#D9650F', '#9C450A']],
+    ['jaune', 'jaune', ['#FFF6CC', '#FFEB8F', '#FFDC4A', '#F5C400', '#D19F00', '#8F6C00']],
+    ['vert', 'vert', ['#E2F5DD', '#BDE8B3', '#8FD47F', '#57B847', '#3A8F30', '#24601E']],
+    ['turquoise', 'turquoise', ['#D9F4F1', '#A8E6DF', '#6DD0C5', '#2FB1A4', '#1D8178', '#11564F']],
+    ['bleu', 'bleu', ['#DDEBFC', '#B1D0F8', '#7FB0F0', '#4A88E0', '#2C63B8', '#1B3F7C']],
+    ['violet', 'violet', ['#E9E2FB', '#CFC0F5', '#AE95EC', '#8A68DE', '#6542B8', '#43297F']],
+    ['rose', 'rose', ['#FCE1F0', '#F7B8DB', '#EF88C2', '#E055A3', '#B8327E', '#7E1D55']],
+    ['brun', 'brun', ['#F1E6DA', '#DDC6AB', '#C3A27F', '#9F7A54', '#7A5A3A', '#523B25']],
+    ['ardoise', 'ardoise', ['#EDEEF0', '#D3D6DB', '#B0B5BD', '#858C97', '#5D6470', '#3A3F48']],
+  ];
+  const PALETTE_PROJET = FAMILLES_PROJET.flatMap(([cle, nom, nuances]) =>
+    nuances.map((hex, i) => ({ id: `${cle}${i + 1}`, nom: `${nom} ${i + 1}`, famille: cle, nuance: i + 1, hex })));
+  const COULEURS_PROJET = [...COULEURS, ...PALETTE_PROJET.map((c) => c.id)];
   const FORMAT_ECHANGE = 'outil-taches';
   const VERSION_ECHANGE = 1;
   const TOMBES_JOURS = 120;
@@ -140,7 +157,7 @@
   }
 
   function couleurValide(v) {
-    if (!COULEURS.includes(v)) throw new ErreurNoyau('Couleur inconnue.');
+    if (!COULEURS_PROJET.includes(v)) throw new ErreurNoyau('Couleur inconnue.');
     return v;
   }
 
@@ -1088,7 +1105,7 @@
       const groupement = typeof p.groupement === 'string' ? [...p.groupement.trim()].slice(0, 40).join('') : '';
       projets.push({
         uid: id, titre: titreProjet(p.titre ?? ''), groupement: groupement || GROUPEMENTS[0],
-        couleur: COULEURS.includes(p.couleur) ? p.couleur : 'blanc',
+        couleur: COULEURS_PROJET.includes(p.couleur) ? p.couleur : 'blanc',
         couleur_depuis: dateHeure(p.couleur_depuis, true) || cree, ordre: parseInt(p.ordre, 10) || 0,
         complete_le: dateHeure(p.complete_le, true), archive_le: dateHeure(p.archive_le, true), cree_le: cree,
         lien: (() => { try { return lienValide(p.lien); } catch { return null; } })(),
@@ -1112,7 +1129,7 @@
     }
     const couleurs = [];
     for (const c of d.couleurs || []) {
-      if (!c || !COULEURS.includes(c.couleur)) continue;
+      if (!c || !COULEURS_PROJET.includes(c.couleur)) continue;
       couleurs.push({ projet_uid: chaineUid(c.projet_uid), couleur: c.couleur, le: dateHeure(c.le) });
     }
     return { projets, taches, couleurs };
@@ -1244,8 +1261,8 @@
    * ======================================================= */
 
   window.Noyau = {
-    VERSION_APP: '2.15.1',
-    GROUPEMENTS, COULEURS, ErreurNoyau,
+    VERSION_APP: '2.16.0',
+    GROUPEMENTS, COULEURS, COULEURS_PROJET, PALETTE_PROJET, FAMILLES_PROJET, ErreurNoyau,
     get groupements() { return groupementsAffiches(); },
     JOURS_IMAGES: 31,
     api,
