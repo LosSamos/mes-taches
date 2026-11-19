@@ -41,6 +41,7 @@
     sortie: ['M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4', 'M16 17l5-5-5-5', 'M21 12H9'],
     calendrier: ['M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z', 'M3 10h18', 'M8 3v4', 'M16 3v4'],
     bas: ['M6 9l6 6 6-6'],
+    etiquette: ['M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z', 'M7 7h.01'],
     loupe: ['M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z', 'M20 20l-4.2-4.2'],
     signet: ['M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z'],
     image: ['M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z', 'M8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z', 'M21 15l-5-5L5 21'],
@@ -1742,7 +1743,7 @@
         titre,
         lienProjet(p),
         h('span', { class: 'tuile-meta' },
-          h('button', { type: 'button', class: 'etiquette', 'aria-haspopup': 'menu', 'aria-expanded': 'false', title: 'Changer le groupement', onclick: (e) => menuGroupement(e.currentTarget, p) }, p.groupement),
+          h('button', { type: 'button', class: 'etiquette', 'aria-haspopup': 'menu', 'aria-expanded': 'false', title: 'Changer le groupement', 'aria-label': `Groupement : ${p.groupement}. Changer le groupement`, onclick: (e) => menuGroupement(e.currentTarget, p) }, p.groupement, h('span', { class: 'etiquette-chevron', 'aria-hidden': 'true' }, icone('bas', 12, 2.4))),
           libelleCouleurImpression(p.couleur),
           modif),
         h('button', { type: 'button', class: 'bouton-couleur', 'aria-label': `Couleur : ${info.nom}. Changer la couleur`, title: 'Couleur du projet', 'aria-haspopup': 'dialog', 'aria-expanded': 'false', 'data-couleur': p.couleur, onclick: (e) => menuCouleur(e.currentTarget, p) },
@@ -2163,10 +2164,19 @@
     if (choisie) choisie.focus({ preventScroll: true });
   }
 
+  /** Change le groupement d'un projet, avec « Annuler » (utile si un filtre le fait disparaître de la vue). */
+  async function changerGroupement(p, g) {
+    const avant = p.groupement;
+    const r = await modifierProjet(p, { groupement: g });
+    if (!r) return;
+    const cache = S.filtre.groupement && S.filtre.groupement !== g;
+    toast(`« ${p.titre} » → ${g}${cache ? ' (masqué par le filtre)' : ''}`, { annuler: () => modifierProjet(p, { groupement: avant }) });
+  }
+
   function menuGroupement(ancre, p) {
     ouvrirPopover(ancre, h('div', { class: 'menu-liste', role: 'menu' }, S.groupements.map((g) => h('button', {
       type: 'button', class: 'menu-item', role: 'menuitemradio', 'aria-checked': String(p.groupement === g),
-      onclick: () => { fermerPopover(); if (g !== p.groupement) modifierProjet(p, { groupement: g }); },
+      onclick: () => { fermerPopover(); if (g !== p.groupement) changerGroupement(p, g); },
     }, h('span', { class: 'coche' }, p.groupement === g ? icone('coche', 16, 2.4) : null), g)),
     h('div', { class: 'menu-separateur', role: 'separator' }),
     h('button', { type: 'button', class: 'menu-item menu-gerer', role: 'menuitem', onclick: () => { fermerPopover(); allerACarte('carte-groupements'); } }, h('span', { class: 'coche' }, icone('engrenage', 14, 2)), 'Gérer les groupements…')),
@@ -2177,6 +2187,7 @@
     ouvrirPopover(ancre, h('div', { class: 'menu-liste', role: 'menu' },
       h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); editerLienProjet(p, ancre); } }, icone('lien'), p.lien ? 'Modifier le lien…' : 'Ajouter un lien…'),
       p.lien && h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); modifierProjet(p, { lien: null }); toast('Lien retiré'); } }, icone('fermer'), 'Retirer le lien'),
+      h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); menuGroupement(ancre, p); } }, icone('etiquette'), h('span', { class: 'menu-libelle' }, 'Changer le groupement…'), h('span', { class: 'menu-compte menu-valeur' }, p.groupement)),
       tachesDe(p.id).length > 1 && h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); menuTriTaches(ancre, p); } }, icone('tri'), 'Trier les tâches…'),
       h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); modifierProjet(p, { couleur: 'gris' }); } }, icone('coche'), 'Marquer comme complété'),
       h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); archiverProjet(p); } }, icone('archive'), 'Archiver le projet'),

@@ -1015,3 +1015,10 @@ a.aj-ev-titre:hover { text-decoration: underline; }
   html[data-imp-couleur="eco"] .tuile-entete, html[data-imp-couleur="nb"] .tuile-entete { --encre: #1C1B19; color: #1C1B19; }
   html[data-imp-couleur="eco"] .tuile-entete .etiquette, html[data-imp-couleur="nb"] .tuile-entete .etiquette { color: #1C1B19; }
 }
+
+/* ---------- Groupement à même la tuile (2.16.1) ---------- */
+.etiquette { gap: 3px; padding-right: 7px; cursor: pointer; }
+.etiquette-chevron { display: inline-flex; opacity: .55; }
+.etiquette:hover .etiquette-chevron, .etiquette[aria-expanded="true"] .etiquette-chevron { opacity: 1; }
+.menu-valeur { margin-left: 12px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media print { .etiquette-chevron { display: none !important; } .etiquette { padding-right: 9px; } }

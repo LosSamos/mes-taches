@@ -1261,7 +1261,7 @@
    * ======================================================= */
 
   window.Noyau = {
-    VERSION_APP: '2.16.0',
+    VERSION_APP: '2.16.1',
     GROUPEMENTS, COULEURS, COULEURS_PROJET, PALETTE_PROJET, FAMILLES_PROJET, ErreurNoyau,
     get groupements() { return groupementsAffiches(); },
     JOURS_IMAGES: 31,
