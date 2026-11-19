@@ -589,7 +589,7 @@ a.aj-ev-titre:hover { text-decoration: underline; }
 /* ---------- Paiements de taxes (2.6) ---------- */
 .blocs-jour { display: flex; flex-direction: column; gap: 14px; }
 .entete-haut > .blocs-jour { flex: 1 0 100%; }
-.paiements .aj-entete .aj-lien { align-self: flex-start; }
+.paiements .aj-entete .aj-lien, .bloc-paye .aj-entete .aj-lien { align-self: flex-start; }
 .pay { align-items: flex-start; gap: 10px; font-size: 14px; padding: 5px 4px; margin: 0 -4px; }
 .pay-date { flex: none; width: 74px; display: flex; flex-direction: column; line-height: 1.3; }
 .pay-date strong { font-size: 13.5px; }
@@ -615,3 +615,12 @@ a.aj-ev-titre:hover { text-decoration: underline; }
 .raccourcis-mois { display: flex; flex-wrap: wrap; gap: 2px 6px; }
 .raccourcis-mois .aj-lien { margin-left: 0; }
 @media (max-width: 560px) { .puces-mois { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.paye-corps { display: flex; flex-direction: column; gap: 4px; }
+.paye-grande { display: flex; align-items: baseline; gap: 10px; }
+.paye-grande strong { font-size: 18px; }
+.paye-grande span { font-size: 13px; color: var(--texte-doux); }
+.paye-grande.bientot span { color: var(--encre); font-weight: 700; }
+.paye-detail { margin: 0; font-size: 13px; color: var(--encre-2); }
+.paye-suivante { color: var(--texte-doux); font-size: 12.5px; }
+.paye-corps .aj-lien { align-self: flex-start; margin: 4px 0 0 -6px; }
+.champ input[type="date"] { min-height: 44px; padding: 0 12px; border: 1px solid var(--bordure-forte); border-radius: 10px; background: var(--surface); font-size: 15px; }

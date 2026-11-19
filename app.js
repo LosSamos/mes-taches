@@ -992,7 +992,7 @@
     }
 
     const large = ecranLarge.matches;
-    const bloc = h('div', { class: 'blocs-jour' }, blocAujourdhui(large), blocPaiements(large));
+    const bloc = h('div', { class: 'blocs-jour' }, blocAujourdhui(large), blocPaiements(large), blocPaye(large));
     const contenu = [
       entete(large ? null : bloc),
       filtresEnCours(),
@@ -1248,6 +1248,103 @@
         (lien || !large) ? h('div', { class: 'aj-section pay-pied' },
           lien ? h('a', { href: lien, target: '_blank', rel: 'noopener noreferrer', class: 'aj-lien pay-lien' }, 'Ouvrir mon état de comptes ↗') : null,
           !large ? h('button', { type: 'button', class: 'aj-lien', onclick: () => allerACarte('carte-paiements') }, 'Modifier la liste') : null) : null));
+  }
+
+  /* ---------- Bloc « Prochaine paye » ---------- */
+
+  const fmtJourCourt = new Intl.DateTimeFormat('fr-CA', { weekday: 'short', day: 'numeric', month: 'short' });
+  const fmtJourSemaineSeul = new Intl.DateTimeFormat('fr-CA', { weekday: 'long' });
+  const PAYE_HABITUELLE = { intervalle: 2, depart: '2026-11-19', fin_periode: 5 };
+  S.payeReplie = lirePref('mes-taches-paye-replie') === '1';
+
+  function reglagePaye() {
+    const p = Noyau.reglages().paye;
+    if (!p || !/^\d{4}-\d{2}-\d{2}$/.test(p.depart || '')) return null;
+    return { intervalle: Math.min(8, Math.max(1, Number(p.intervalle) || 2)), depart: p.depart, fin_periode: Math.min(30, Math.max(0, Number(p.fin_periode) || 0)) };
+  }
+
+  /** Prochaines dates de paye (aujourd'hui compris). */
+  function prochainesPayes(reglage, n = 2, apartir = aujourdhui()) {
+    const pas = 7 * reglage.intervalle;
+    const depart = lireDate(reglage.depart);
+    let k = Math.max(0, Math.ceil(joursEntre(depart, apartir) / pas));
+    const res = [];
+    while (res.length < n) { res.push(plusJours(depart, k * pas)); k++; }
+    return res;
+  }
+
+  function periodePaye(reglage, d) {
+    const fin = plusJours(d, -reglage.fin_periode);
+    const debut = plusJours(fin, -(7 * reglage.intervalle - 1));
+    const jr = (x) => (x.getDate() === 1 ? '1er' : String(x.getDate()));
+    return debut.getMonth() === fin.getMonth()
+      ? `du ${jr(debut)} au ${jr(fin)} ${MOIS_COURTS[fin.getMonth()]}`
+      : `du ${jr(debut)} ${MOIS_COURTS[debut.getMonth()]} au ${jr(fin)} ${MOIS_COURTS[fin.getMonth()]}`;
+  }
+
+  const relatif = (d) => { const n = joursEntre(aujourdhui(), d); return n === 0 ? 'aujourd’hui' : n === 1 ? 'demain' : `dans ${n} j`; };
+
+  function blocPaye(large) {
+    const reglage = reglagePaye();
+    const replie = !large && S.payeReplie;
+    const [prochaine, suivante] = reglage ? prochainesPayes(reglage) : [];
+    const titre = h('div', { class: 'aj-titre' }, h('h2', null, 'Prochaine paye'),
+      h('span', { class: 'aj-date' }, !reglage ? 'Non configurée'
+        : (large || !replie) ? `${reglage.intervalle === 1 ? 'Chaque semaine' : `Aux ${reglage.intervalle} semaines`}, le ${fmtJourSemaineSeul.format(lireDate(reglage.depart))}`
+          : `${majuscule(fmtJourCourt.format(prochaine))} · ${relatif(prochaine)}`));
+    const entete = large
+      ? h('div', { class: 'aj-entete' }, titre, h('button', { type: 'button', class: 'aj-lien', onclick: () => allerACarte('carte-paye') }, 'Modifier'))
+      : h('button', {
+        type: 'button', class: 'aj-entete aj-bascule', 'aria-expanded': String(!replie),
+        onclick: () => { S.payeReplie = !S.payeReplie; ecrirePref('mes-taches-paye-replie', S.payeReplie ? '1' : '0'); rendre(); },
+      }, titre, icone('bas', 16, 2.2));
+
+    let corps;
+    if (!reglage) {
+      corps = h('div', { class: 'aj-section' },
+        h('p', { class: 'aj-vide' }, 'D’après ton fichier : aux 2 semaines, le jeudi, 5 jours après la fin de la période.'),
+        h('div', { class: 'pay-actions' },
+          h('button', { type: 'button', class: 'bouton bouton-petit', onclick: () => { Noyau.changerReglages({ paye: { ...PAYE_HABITUELLE } }); rendre(); } }, 'Utiliser ce calendrier'),
+          h('button', { type: 'button', class: 'aj-lien', onclick: () => allerACarte('carte-paye') }, 'Autre fréquence')));
+    } else {
+      const n = joursEntre(aujourdhui(), prochaine);
+      corps = h('div', { class: 'aj-section paye-corps' },
+        h('div', { class: 'paye-grande' + (n <= 2 ? ' bientot' : '') },
+          h('strong', null, majuscule(fmtJourCourt.format(prochaine))),
+          h('span', null, relatif(prochaine))),
+        h('p', { class: 'paye-detail' }, `Période ${periodePaye(reglage, prochaine)}`),
+        h('p', { class: 'paye-detail paye-suivante' }, `Suivante : ${fmtJourCourt.format(suivante)} (période ${periodePaye(reglage, suivante)})`),
+        !large ? h('button', { type: 'button', class: 'aj-lien', onclick: () => allerACarte('carte-paye') }, 'Modifier') : null);
+    }
+    return h('section', { class: 'aujourdhui bloc-paye sans-impression' + (replie ? ' replie' : ''), 'aria-label': 'Prochaine paye' },
+      entete, replie ? null : h('div', { class: 'aj-corps' }, corps));
+  }
+
+  function cartePaye() {
+    const r = reglagePaye();
+    const v = r || PAYE_HABITUELLE;
+    const freq = h('select', { id: 'paye-freq', class: 'select' }, [[1, 'Chaque semaine'], [2, 'Aux 2 semaines'], [3, 'Aux 3 semaines'], [4, 'Aux 4 semaines']].map(([n, l]) => h('option', { value: String(n), selected: n === v.intervalle }, l)));
+    const depart = h('input', { id: 'paye-date', type: 'date', value: v.depart });
+    const fin = h('select', { id: 'paye-fin', class: 'select' }, Array.from({ length: 15 }, (_, i) => h('option', { value: String(i), selected: i === v.fin_periode }, i === 0 ? 'Le jour même' : `${i} jour${i > 1 ? 's' : ''} avant la paye`)));
+    const enregistrer = () => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(depart.value)) { toast('Choisis une date de paye.', { erreur: true }); return; }
+      Noyau.changerReglages({ paye: { intervalle: Number(freq.value), depart: depart.value, fin_periode: Number(fin.value) } });
+      rendre();
+      const [p1] = prochainesPayes(reglagePaye());
+      toast(`Prochaine paye : ${fmtJourCourt.format(p1)}`);
+    };
+    const apercu = r ? prochainesPayes(r, 4).map((d) => fmtJourCourt.format(d)).join(' · ') : null;
+    return h('section', { class: 'carte', id: 'carte-paye', 'aria-labelledby': 't-paye' },
+      h('h2', { id: 't-paye' }, h('span', { class: 'pastille-icone' }, icone('horloge', 18)), 'Paye'),
+      h('p', { class: 'aide' }, 'Une date de paye connue suffit : l’app calcule les suivantes. Le jour de la semaine est celui de cette date.'),
+      h('div', { class: 'impression-grille' },
+        h('div', { class: 'champ' }, h('label', { for: 'paye-freq' }, 'Fréquence'), freq),
+        h('div', { class: 'champ' }, h('label', { for: 'paye-date' }, 'Une date de paye'), depart),
+        h('div', { class: 'champ' }, h('label', { for: 'paye-fin' }, 'Fin de la période payée'), fin)),
+      apercu ? h('p', { class: 'aide' }, h('strong', null, 'Prochaines : '), apercu) : null,
+      h('div', { class: 'pay-actions' },
+        h('button', { type: 'button', class: 'bouton bouton-principal', onclick: enregistrer }, 'Enregistrer'),
+        r ? h('button', { type: 'button', class: 'bouton bouton-texte', onclick: () => { Noyau.changerReglages({ paye: null }); rendre(); } }, 'Retirer le bloc') : null));
   }
 
   async function payer(x, li, caseACocher) {
@@ -2146,6 +2243,7 @@
       h('div', { class: 'colonnes' }, carteDrive(), carteSecurite()),
       h('div', { class: 'colonnes' }, carteVeille(), carteCopies()),
       carteEcheances(),
+      cartePaye(),
       carteImpression(),
       h('h2', { class: 'titre-section' }, 'Sauvegarde en fichier .zip'),
       h('div', { class: 'colonnes' }, carteExport(info), carteImport(info)),
