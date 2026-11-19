@@ -40,6 +40,10 @@
     calendrier: ['M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z', 'M3 10h18', 'M8 3v4', 'M16 3v4'],
     bas: ['M6 9l6 6 6-6'],
     loupe: ['M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z', 'M20 20l-4.2-4.2'],
+    image: ['M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z', 'M8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z', 'M21 15l-5-5L5 21'],
+    gauche: ['M15 18l-6-6 6-6'],
+    droite: ['M9 18l6-6-6-6'],
+    telecharger: ['M12 3v12', 'M7 10l5 5 5-5', 'M5 21h14'],
     lien: ['M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71', 'M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71'],
     haut: ['M6 15l6-6 6 6'],
     crayon: ['M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z'],
@@ -273,8 +277,23 @@
    * Messages, confirmations, fenêtres flottantes
    * ======================================================= */
 
+  /* Les messages doivent rester cliquables même par-dessus une fenêtre modale (images, visionneuse) :
+     on les place dans la fenêtre ouverte la plus haute, sinon dans la page. */
+  let zoneToasts = null;
+  function hoteToasts() {
+    zoneToasts = zoneToasts || $('#toasts');
+    if (!zoneToasts) return null;
+    const d = [...document.querySelectorAll('dialog[open]')].pop();
+    const hote = d || document.body;
+    if (zoneToasts.parentElement !== hote) hote.append(zoneToasts);
+    return zoneToasts;
+  }
+  new MutationObserver(() => {
+    if (zoneToasts && (!zoneToasts.isConnected || (zoneToasts.parentElement?.tagName === 'DIALOG' && !zoneToasts.parentElement.open))) hoteToasts();
+  }).observe(document.body, { childList: true });
+
   function toast(message, { annuler, action, erreur = false, duree } = {}) {
-    const zone = $('#toasts');
+    const zone = hoteToasts();
     const bouton = annuler ? { libelle: 'Annuler', fn: annuler } : action;
     const el = h('div', { class: 'toast' + (erreur ? ' erreur' : '') + (bouton ? '' : ' sans-action'), role: erreur ? 'alert' : 'status' },
       h('span', null, message),
@@ -768,8 +787,9 @@
     clearInterval(minuterieVeille);
     S.projets = []; S.taches = []; S.couleurs = []; S.arch.donnees = null; S.compte.info = null;
     Agenda.vider();
+    oublierUrlsImages();
     fermerBlocNotes({ silencieux: true }); // le contenu temporaire ne survit pas au verrouillage
-    $('#toasts').replaceChildren();
+    hoteToasts()?.replaceChildren();
     await Sync.verrouiller();
     afficherDeverrouillage({ raison });
   }
@@ -875,6 +895,7 @@
     let page;
     if (S.vue === 'archives') page = vueArchives();
     else if (S.vue === 'compte') page = vueCompte();
+    else if (S.vue === 'images') page = vueImages();
     else page = vueEnCours();
     $('#app').replaceChildren(page);
     apresRendu();
@@ -905,13 +926,16 @@
         h('button', { type: 'button', class: 'onglet', 'aria-current': S.vue === 'encours' ? 'page' : null, onclick: () => allerA('encours') },
           'En cours', h('span', { class: 'compte' }, nbEnCours)),
         h('button', { type: 'button', class: 'onglet', 'aria-current': S.vue === 'archives' ? 'page' : null, onclick: () => allerA('archives') },
-          'Archives', h('span', { class: 'compte' }, S.compteArchives))));
+          'Archives', h('span', { class: 'compte' }, S.compteArchives)),
+        h('button', { type: 'button', class: 'onglet', 'aria-current': S.vue === 'images' ? 'page' : null, onclick: () => allerA('images') },
+          icone('image', 15, 2), 'Images', h('span', { class: 'compte' }, nombreImages()))));
   }
 
   async function allerA(vue) {
     if (editionActive) editionActive.terminer(true);
     S.vue = vue;
     if (vue === 'archives') { rendre(); await chargerArchives(); return; }
+    if (vue === 'images') { rendre(); window.scrollTo(0, 0); return; }
     if (vue === 'compte') { S.sauv.apercu = null; S.sauv.lu = null; S.sauv.erreur = null; S.compte.info = null; S.compte.copies = null; rendre(); window.scrollTo(0, 0); await chargerCompte(); return; }
     if (Date.now() - S.chargeLe > 60000) await essayer(charger);
     rendre();
@@ -1775,7 +1799,7 @@
       prise,
       h('input', { type: 'checkbox', 'aria-label': `Archiver : ${texteBrut(t.texte)}`, onchange: (e) => finaliser(t, li, e.currentTarget) }),
       pastilleTache(t),
-      texte, lienTache(t), rec,
+      texte, boutonImagesTache(t), lienTache(t), rec,
       h('span', { class: 'tache-date', title: `Créée le ${dateLongue(cree)}` }, dateCourte(cree)),
       h('button', { type: 'button', class: 'menu-tache', 'aria-label': `Autres actions : ${texteBrut(t.texte).slice(0, 60)}`, title: 'Modifier ou supprimer', 'aria-haspopup': 'menu', 'aria-expanded': 'false', onclick: (e) => menuTache(e.currentTarget, t, texte) }, icone('menu', 16)));
     prise.addEventListener('pointerdown', (e) => glisserTache(e, li, prise, t.projet_id));
@@ -1788,6 +1812,7 @@
   function menuTache(ancre, t, texteEl) {
     ouvrirPopover(ancre, h('div', { class: 'menu-liste', role: 'menu' },
       h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); editerTache(t, texteEl); } }, icone('crayon'), 'Modifier le texte'),
+      h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); ouvrirImagesTache(t); } }, icone('image'), t.images ? `Images (${t.images})…` : 'Ajouter une image…'),
       h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); editerLienTache(t, ancre); } }, icone('lien'), t.lien ? 'Modifier le lien…' : 'Ajouter un lien…'),
       h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); menuRecurrence(ancre, t); } }, icone('recurrence'), t.recurrence ? 'Modifier la répétition…' : 'Répéter…'),
       h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); menuCouleurTache(ancre, t); } }, h('span', { class: 'coche' }, h('span', { class: 'point fond-couleur', 'data-couleur': t.couleur || 'blanc' })), 'Couleur…'),
@@ -2563,6 +2588,7 @@
           return h('li', { class: 'arch-tache' },
             t.couleur && t.couleur !== 'blanc' ? h('span', { class: 'pastille-fixe', 'data-couleur': t.couleur, title: `Couleur : ${COULEURS[t.couleur]?.nom}` }, h('span', { class: 'rond' })) : null,
             texte,
+            t.images ? h('button', { type: 'button', class: 'image-tache', title: `${t.images} image${t.images > 1 ? 's' : ''}`, 'aria-label': `Voir les images (${t.images})`, onclick: () => ouvrirImagesTache(t) }, icone('image', 14, 2), h('span', null, String(t.images))) : null,
             t.lien && /^https?:\/\//i.test(t.lien) ? h('a', { class: 'lien-tache', href: t.lien, target: '_blank', rel: 'noopener noreferrer', title: `Ouvrir : ${decrireLien(t.lien).nom}`, 'aria-label': `Ouvrir le lien (${decrireLien(t.lien).nom})` }, icone('lien', 14, 2.2)) : null,
             t.recurrence && h('span', { class: 'rec' }, icone('recurrence', 12, 2.2), libelleRecurrence(t.recurrence)),
             h('span', { class: 'meta', title: `Créée le ${dateLongue(lireDate(t.cree_le))}` }, `créée ${dateCourte(lireDate(t.cree_le))}`),
@@ -2954,7 +2980,7 @@
     const s = S.sauv;
     const annees = info.annees.length ? info.annees : [{ annee: new Date().getFullYear(), taches: 0, projets: 0 }];
     if (s.periode === null) s.periode = String(annees[0].annee);
-    const coches = { encours: true, archives: true, couleurs: true };
+    const coches = { encours: true, archives: true, couleurs: true, images: true };
     const radioAnnee = h('input', { type: 'radio', name: 'periode', checked: s.periode !== 'tout' });
     const radioTout = h('input', { type: 'radio', name: 'periode', checked: s.periode === 'tout' });
     const selAnnee = h('select', { class: 'champ-petit', 'aria-label': 'Année' }, annees.map((a) => h('option', { value: String(a.annee), selected: String(a.annee) === s.periode }, String(a.annee))));
@@ -2982,7 +3008,9 @@
     const telecharger = async () => {
       if (!coches.encours && !coches.archives) { toast('Coche au moins « Tâches en cours » ou « Archives ».', { erreur: true }); return; }
       await essayer(async () => {
-        const { blob, nom: nomFichier } = await Noyau.exporter({ periode: s.periode, ...coches });
+        const lireImage = coches.images === false ? null : async (id, type) => new Uint8Array(await (await Sync.imageLire(id, 'img', type)).arrayBuffer());
+        const { images: _i, ...options } = coches;
+        const { blob, nom: nomFichier } = await Noyau.exporter({ periode: s.periode, ...options, lireImage });
         const url = URL.createObjectURL(blob);
         const a = h('a', { href: url, download: nomFichier });
         document.body.append(a); a.click(); a.remove();
@@ -3007,7 +3035,7 @@
         h('label', { class: 'option' }, radioTout, 'Toutes les données'),
         h('p', { class: 'aide' }, "Une tâche appartient à l'année de sa création. Ses projets suivent avec elle.")),
       h('fieldset', null, h('legend', null, 'Inclure'),
-        caseInclure('encours', 'Tâches en cours'), caseInclure('archives', 'Archives'), caseInclure('couleurs', 'Historique des couleurs')),
+        caseInclure('encours', 'Tâches en cours'), caseInclure('archives', 'Archives'), caseInclure('couleurs', 'Historique des couleurs'), caseInclure('images', 'Images jointes')),
       h('div', { class: 'boite-grise' }, nom, resume),
       h('p', { class: 'aide' }, 'Ce fichier n’est pas chiffré : il est lisible dans Excel. Range-le en lieu sûr.'),
       h('button', { type: 'button', class: 'bouton bouton-principal', onclick: telecharger }, icone('telecharger', 16, 2.2), 'Télécharger le .zip'));
@@ -3080,6 +3108,13 @@
           }
         }
         const st = Noyau.ecrireEchange(s.lu.donnees, s.mode, s.lu.periode);
+        for (const im of st.images_a_stocker) {
+          try {
+            const blob = new Blob([im.octets], { type: im.type });
+            const { mini } = await preparerImage(blob, { seulementMini: true });
+            await Sync.imageEnregistrer(im.id, { image: blob, mini });
+          } catch (e) { console.warn('Image importée non gardée :', e.message); }
+        }
         await Sync.enregistrerMaintenant();
         toast(`Import terminé : ${st.taches_ajoutees} tâche${st.taches_ajoutees > 1 ? 's' : ''} ajoutée${st.taches_ajoutees > 1 ? 's' : ''}, ${st.projets_ajoutes} projet${st.projets_ajoutes > 1 ? 's' : ''} ajouté${st.projets_ajoutes > 1 ? 's' : ''}${st.taches_ignorees ? `, ${st.taches_ignorees} déjà présente${st.taches_ignorees > 1 ? 's' : ''}` : ''}.`, { duree: 8000 });
         s.apercu = null; s.lu = null;
@@ -3339,6 +3374,290 @@
     ouvrirBlocNotes();
   });
   window.addEventListener('resize', () => { if (blocNotes.el) placer(blocNotes.el); });
+
+  /* =========================================================
+   * Images (2.14) : captures et photos jointes aux tâches
+   * Réduites (2400 px au plus), chiffrées sur l'appareil, puis envoyées dans le dossier du Drive.
+   * ======================================================= */
+
+  const PEUT_WEBP = (() => { try { const c = document.createElement('canvas'); c.width = c.height = 1; return c.toDataURL('image/webp').startsWith('data:image/webp'); } catch { return false; } })();
+  const urlsImages = new Map();
+
+  function oublierUrlsImages() {
+    for (const u of urlsImages.values()) { if (typeof u === 'string') URL.revokeObjectURL(u); }
+    urlsImages.clear();
+  }
+
+  function nombreImages() {
+    const m = Noyau.modele;
+    return Object.values(m.images || {}).filter((im) => m.taches[im.tache_id]).length;
+  }
+
+  async function decoderImage(blob) {
+    if (typeof createImageBitmap === 'function') {
+      try { return await createImageBitmap(blob); } catch { /* on essaie autrement */ }
+    }
+    const url = URL.createObjectURL(blob);
+    try {
+      const img = new Image();
+      img.decoding = 'async';
+      img.src = url;
+      await img.decode();
+      return img;
+    } catch {
+      throw new Error('Format d’image non reconnu par ce navigateur.');
+    } finally { setTimeout(() => URL.revokeObjectURL(url), 1000); }
+  }
+
+  async function encoder(source, max, qualite, type) {
+    const l = source.width, hh = source.height;
+    const r = Math.min(1, max / Math.max(l, hh));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(l * r)); c.height = Math.max(1, Math.round(hh * r));
+    const ctx = c.getContext('2d');
+    if (type === 'image/jpeg') { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); }
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(source, 0, 0, c.width, c.height);
+    const blob = await new Promise((ok) => c.toBlob(ok, type, qualite));
+    if (!blob) throw new Error('Impossible de préparer l’image.');
+    return { blob, largeur: c.width, hauteur: c.height };
+  }
+
+  /** Réduit l'image (2400 px au plus) et fait une miniature (360 px). Garde l'original s'il est déjà plus léger. */
+  async function preparerImage(fichier, { seulementMini = false } = {}) {
+    if (!/^image\//.test(fichier.type || '')) throw new Error('Ce fichier n’est pas une image.');
+    if (fichier.size > 40 * 1024 * 1024) throw new Error('Image trop lourde (40 Mo au plus).');
+    const source = await decoderImage(fichier);
+    const type = PEUT_WEBP ? 'image/webp' : 'image/jpeg';
+    const mini = (await encoder(source, 360, 0.72, type)).blob;
+    if (seulementMini) return { mini };
+    let { blob: image, largeur, hauteur } = await encoder(source, 2400, 0.86, type);
+    let typeFinal = type;
+    const gardable = ['image/png', 'image/jpeg', 'image/webp'].includes(fichier.type) && Math.max(source.width, source.height) <= 2400;
+    if (gardable && fichier.size <= image.size) { image = fichier; typeFinal = fichier.type; largeur = source.width; hauteur = source.height; }
+    source.close?.();
+    return { image, mini, type: typeFinal, largeur, hauteur };
+  }
+
+  /** URL locale (blob:) d'une image ; la miniature d'abord, l'image entière sur demande. */
+  async function urlImage(im, sorte = 'mini') {
+    const cle = `${im.id}:${sorte}`;
+    if (urlsImages.has(cle)) return urlsImages.get(cle);
+    const promesse = Sync.imageLire(im.id, sorte, sorte === 'mini' ? (PEUT_WEBP ? 'image/webp' : 'image/jpeg') : im.type)
+      .then((b) => { const u = URL.createObjectURL(b); urlsImages.set(cle, u); return u; })
+      .catch((e) => { urlsImages.delete(cle); throw e; });
+    urlsImages.set(cle, promesse);
+    return promesse;
+  }
+
+  function vignette(im, { onclick, classe = '' } = {}) {
+    const img = h('img', { alt: im.nom || 'Image', loading: 'lazy', decoding: 'async' });
+    const cadre = h('button', { type: 'button', class: 'vignette chargement ' + classe, title: im.nom, onclick }, img);
+    const charger = () => urlImage(im, 'mini').then((u) => { img.src = u; cadre.classList.remove('chargement'); })
+      .catch((e) => { cadre.classList.remove('chargement'); cadre.classList.add('absente'); cadre.title = e.code === 'jeton' ? 'Reconnecte Google pour voir cette image' : e.code === 'absente' ? 'Image pas encore disponible sur cet appareil' : e.message; });
+    if ('IntersectionObserver' in window) {
+      const obs = new IntersectionObserver((entrees) => { if (entrees.some((x) => x.isIntersecting)) { obs.disconnect(); charger(); } }, { rootMargin: '200px' });
+      requestAnimationFrame(() => obs.observe(cadre));
+    } else charger();
+    return cadre;
+  }
+
+  /* ---------- Bouton sur la ligne de tâche ---------- */
+
+  function boutonImagesTache(t) {
+    if (t.images) {
+      return h('button', { type: 'button', class: 'image-tache', title: `${t.images} image${t.images > 1 ? 's' : ''}`, 'aria-label': `Voir les images de la tâche (${t.images})`, onclick: () => ouvrirImagesTache(t) },
+        icone('image', 14, 2), h('span', null, String(t.images)));
+    }
+    return h('button', { type: 'button', class: 'rec-bouton image-bouton', 'aria-label': 'Ajouter une image à cette tâche', title: 'Ajouter une image ou une capture', onclick: () => ouvrirImagesTache(t) }, icone('image', 14, 2));
+  }
+
+  /* ---------- Fenêtre des images d'une tâche ---------- */
+
+  async function ajouterImages(t, fichiers, etat) {
+    const liste = [...fichiers].filter((f) => f && /^image\//.test(f.type));
+    if (!liste.length) { toast('Aucune image à ajouter.', { erreur: true }); return 0; }
+    let n = 0;
+    for (const [i, f] of liste.entries()) {
+      etat?.(`Ajout de l’image ${i + 1} sur ${liste.length}…`);
+      try {
+        const p = await preparerImage(f);
+        const id = crypto.randomUUID();
+        await Sync.imageEnregistrer(id, { image: p.image, mini: p.mini });
+        const nom = f.name && f.name !== 'image.png' ? f.name : `capture-${iso(new Date())}.${p.type.split('/')[1]}`;
+        await api('image_ajouter', { methode: 'POST', donnees: { id, tache_id: t.id, nom, type: p.type, largeur: p.largeur, hauteur: p.hauteur, taille: p.image.size } });
+        n++;
+      } catch (e) { toast(`Image non ajoutée : ${e.message}`, { erreur: true }); }
+    }
+    etat?.('');
+    const tt = S.taches.find((x) => x.id === t.id);
+    t.images = (t.images || 0) + n; if (tt && tt !== t) tt.images = t.images;
+    return n;
+  }
+
+  function ouvrirImagesTache(t) {
+    const dlg = h('dialog', { class: 'dialogue-images', 'aria-labelledby': 'dlg-images-titre' });
+    const grille = h('div', { class: 'grille-images' });
+    const etat = h('p', { class: 'images-etat', role: 'status' });
+    const entree = h('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true });
+    const remplir = async () => {
+      const { images } = await api('images', { donnees: { tache_id: t.id } });
+      grille.replaceChildren(...images.map((im, i) => h('div', { class: 'case-image' },
+        vignette(im, { onclick: () => ouvrirVisionneuse(images, i, { depuisTache: true, apresSuppression: remplir }) }),
+        h('button', { type: 'button', class: 'retirer-image', 'aria-label': `Supprimer ${im.nom}`, title: 'Supprimer l’image', onclick: () => supprimerImage(im, remplir) }, icone('fermer', 13, 2.6)))));
+      grille.hidden = !images.length;
+    };
+    const ajouter = async (fichiers) => {
+      const n = await ajouterImages(t, fichiers, (m) => { etat.textContent = m; });
+      if (n) { await remplir(); toast(`${n} image${n > 1 ? 's' : ''} ajoutée${n > 1 ? 's' : ''}`); }
+    };
+    entree.addEventListener('change', () => { if (entree.files.length) ajouter(entree.files); entree.value = ''; });
+    const zone = h('div', { class: 'zone-depot', tabindex: '0' },
+      icone('image', 22, 1.8),
+      h('p', null, h('strong', null, 'Glisse des images ici'), ' ou colle une capture (Ctrl+V)'),
+      h('button', { type: 'button', class: 'bouton bouton-petit', onclick: () => entree.click() }, icone('plus', 14, 2.4), 'Choisir des images'));
+    zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('survol'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('survol'));
+    zone.addEventListener('drop', (e) => { e.preventDefault(); zone.classList.remove('survol'); ajouter(e.dataTransfer.files); });
+    const coller = (e) => {
+      if (!dlg.open || document.querySelector('dialog.visionneuse[open]')) return;
+      const fichiers = [...(e.clipboardData?.items || [])].filter((x) => x.kind === 'file' && x.type.startsWith('image/')).map((x) => x.getAsFile());
+      if (fichiers.length) { e.preventDefault(); ajouter(fichiers); }
+    };
+    document.addEventListener('paste', coller);
+    const fermer = () => { document.removeEventListener('paste', coller); dlg.close(); dlg.remove(); if (!editionActive) rendre(); };
+    dlg.addEventListener('cancel', (e) => { e.preventDefault(); fermer(); });
+    dlg.append(
+      h('div', { class: 'dlg-entete' },
+        h('div', null, h('h2', { id: 'dlg-images-titre' }, 'Images'), h('p', { class: 'dlg-sous' }, texteBrut(t.texte))),
+        h('button', { type: 'button', class: 'bouton-outil', 'aria-label': 'Fermer', onclick: fermer }, icone('fermer', 17, 2.2))),
+      grille, zone, etat, entree);
+    document.body.append(dlg);
+    dlg.showModal();
+    remplir();
+    zone.focus();
+  }
+
+  async function supprimerImage(im, apres) {
+    const r = await essayer(() => api('image_supprimer', { methode: 'POST', donnees: { id: im.id } }));
+    if (!r) return;
+    const t = S.taches.find((x) => x.id === im.tache_id); if (t) t.images = Math.max(0, (t.images || 1) - 1);
+    await apres?.();
+    if (!document.querySelector('dialog[open]') && !editionActive) rendre();
+    toast('Image supprimée', { duree: 10000, annuler: async () => {
+      const rr = await essayer(() => api('image_reinserer', { methode: 'POST', donnees: { image: r.image } }));
+      if (rr) { if (t) t.images = (t.images || 0) + 1; await apres?.(); if (!document.querySelector('dialog[open]') && !editionActive) rendre(); }
+    } });
+  }
+
+  /* ---------- Visionneuse ---------- */
+
+  function ouvrirVisionneuse(liste, index, { depuisTache = false, apresSuppression = null } = {}) {
+    let i = index;
+    const dlg = h('dialog', { class: 'visionneuse', 'aria-label': 'Visionneuse d’images' });
+    const img = h('img', { class: 'vis-image', alt: '' });
+    const legende = h('div', { class: 'vis-legende' });
+    const compteur = h('span', { class: 'vis-compte' });
+    const precedent = h('button', { type: 'button', class: 'vis-fleche vis-gauche', 'aria-label': 'Image précédente', onclick: () => aller(-1) }, icone('gauche', 26, 2));
+    const suivant = h('button', { type: 'button', class: 'vis-fleche vis-droite', 'aria-label': 'Image suivante', onclick: () => aller(1) }, icone('droite', 26, 2));
+    const telecharger = h('a', { class: 'vis-bouton', title: 'Télécharger', 'aria-label': 'Télécharger' }, icone('telecharger', 18, 2));
+    const actions = h('div', { class: 'vis-actions' });
+    let jeton = 0;
+    const afficher = async () => {
+      const im = liste[i];
+      const n = ++jeton;
+      img.removeAttribute('src');
+      dlg.classList.add('chargement');
+      compteur.textContent = liste.length > 1 ? `${i + 1} / ${liste.length}` : '';
+      precedent.hidden = suivant.hidden = liste.length < 2;
+      legende.replaceChildren(h('strong', null, im.tache_texte ? texteBrut(im.tache_texte) : im.nom),
+        h('span', null, [im.projet_titre, im.nom, im.cree_le ? dateCourte(lireDate(im.cree_le)) : null, im.tache_finalisee ? 'tâche archivée' : null].filter(Boolean).join(' · ')));
+      actions.replaceChildren();
+      ajouter(actions, [
+        compteur, telecharger,
+        !depuisTache ? h('button', { type: 'button', class: 'vis-bouton vis-texte', onclick: () => allerALaTache(im) }, 'Aller à la tâche') : null,
+        h('button', { type: 'button', class: 'vis-bouton', title: 'Supprimer l’image', 'aria-label': 'Supprimer l’image', onclick: async () => {
+          fermer();
+          await supprimerImage(im, async () => { await apresSuppression?.(); if (S.vue === 'images') rendre(); });
+        } }, icone('corbeille', 18, 2)),
+        h('button', { type: 'button', class: 'vis-bouton', title: 'Fermer (Échap)', 'aria-label': 'Fermer', onclick: () => fermer() }, icone('fermer', 20, 2.2))]);
+      try {
+        const petite = await urlImage(im, 'mini');
+        if (n === jeton && !img.src) img.src = petite;
+        const grande = await urlImage(im, 'img');
+        if (n !== jeton) return;
+        img.src = grande;
+        img.alt = im.nom;
+        telecharger.href = grande;
+        telecharger.download = im.nom && /\.[a-z0-9]{2,5}$/i.test(im.nom) ? im.nom.replace(/\.[a-z0-9]{2,5}$/i, `.${(im.type || 'image/webp').split('/')[1].replace('jpeg', 'jpg')}`) : `${im.nom || 'image'}.${(im.type || 'image/webp').split('/')[1].replace('jpeg', 'jpg')}`;
+      } catch (e) {
+        if (n === jeton) legende.append(h('span', { class: 'vis-erreur' }, e.code === 'jeton' ? 'Reconnecte Google pour afficher cette image.' : e.code === 'absente' ? 'Cette image n’est pas encore arrivée sur cet appareil.' : e.message));
+      } finally { if (n === jeton) dlg.classList.remove('chargement'); }
+    };
+    const aller = (d) => { if (liste.length < 2) return; i = (i + d + liste.length) % liste.length; afficher(); };
+    const clavier = (e) => { if (e.key === 'ArrowLeft') aller(-1); if (e.key === 'ArrowRight') aller(1); };
+    let x0 = null;
+    img.addEventListener('pointerdown', (e) => { x0 = e.clientX; });
+    img.addEventListener('pointerup', (e) => { if (x0 !== null && Math.abs(e.clientX - x0) > 50) aller(e.clientX < x0 ? 1 : -1); x0 = null; });
+    function fermer() { dlg.removeEventListener('keydown', clavier); dlg.close(); dlg.remove(); }
+    dlg.addEventListener('keydown', clavier);
+    dlg.addEventListener('cancel', (e) => { e.preventDefault(); fermer(); });
+    dlg.addEventListener('click', (e) => { if (e.target === dlg || e.target.classList.contains('vis-scene')) fermer(); });
+    dlg.append(h('div', { class: 'vis-scene' }, img, precedent, suivant), h('div', { class: 'vis-barre' }, legende, actions));
+    document.body.append(dlg);
+    dlg.showModal();
+    afficher();
+  }
+
+  async function allerALaTache(im) {
+    document.querySelectorAll('dialog[open]').forEach((d) => { d.close(); d.remove(); });
+    if (im.tache_finalisee) { await allerA('archives'); toast('Cette tâche est dans les Archives.'); return; }
+    await allerA('encours');
+    allerAuProjet(im.projet_id, im.tache_id);
+  }
+
+  /* ---------- Onglet « Images » : la galerie ---------- */
+
+  S.galerie = { projet: '', archivees: true };
+  const fmtMoisAnnee = new Intl.DateTimeFormat('fr-CA', { month: 'long', year: 'numeric' });
+
+  function vueImages() {
+    const g = S.galerie;
+    const liste = imagesGalerie().filter((im) => (!g.projet || im.projet_id === g.projet) && (g.archivees || !im.tache_finalisee));
+    const projets = [...new Map(imagesGalerie().map((im) => [im.projet_id, im.projet_titre])).entries()].sort((a, b) => a[1].localeCompare(b[1], 'fr'));
+    const groupes = new Map();
+    for (const [i, im] of liste.entries()) {
+      const cle = (im.cree_le || '').slice(0, 7);
+      if (!groupes.has(cle)) groupes.set(cle, []);
+      groupes.get(cle).push([i, im]);
+    }
+    return h('div', { class: 'page page-images' },
+      entete(),
+      h('div', { class: 'filtres sans-impression' },
+        h('div', { class: 'barre-filtres' },
+          h('select', { class: 'select select-galerie', 'aria-label': 'Projet', onchange: (e) => { g.projet = e.currentTarget.value; rendre(); } },
+            h('option', { value: '' }, 'Tous les projets'), projets.map(([id, titre]) => h('option', { value: id, selected: g.projet === id }, titre))),
+          h('label', { class: 'case-impression' }, h('input', { type: 'checkbox', checked: g.archivees, onchange: (e) => { g.archivees = e.currentTarget.checked; rendre(); } }), 'Inclure les tâches archivées'),
+          h('span', { class: 'resume-filtres' }, `${liste.length} image${liste.length > 1 ? 's' : ''}`))),
+      liste.length
+        ? h('div', { class: 'galerie' }, [...groupes.entries()].map(([cle, items]) => h('section', { class: 'galerie-mois' },
+          h('h2', { class: 'galerie-titre' }, cle ? majuscule(fmtMoisAnnee.format(new Date(`${cle}-15T12:00:00`))) : 'Sans date'),
+          h('div', { class: 'galerie-grille' }, items.map(([i, im]) => h('figure', { class: 'galerie-item' },
+            vignette(im, { onclick: () => ouvrirVisionneuse(liste, i) }),
+            h('figcaption', null, h('span', { class: 'galerie-tache' }, texteBrut(im.tache_texte)),
+              h('span', { class: 'galerie-projet' }, im.projet_titre + (im.tache_finalisee ? ' · archivée' : '')))))))))
+        : h('div', { class: 'vide' }, h('h2', null, 'Aucune image'),
+          h('p', null, 'Ajoute une image ou une capture d’écran à une tâche : icône 🖼 au survol de la tâche, ou menu ⋯ → « Ajouter une image… ».')));
+  }
+
+  function imagesGalerie() {
+    const m = Noyau.modele;
+    return Object.values(m.images || {}).filter((im) => m.taches[im.tache_id]).map((im) => {
+      const t = m.taches[im.tache_id];
+      const p = m.projets[t.projet_id];
+      return { ...im, projet_id: t.projet_id, tache_texte: t.texte, tache_finalisee: Boolean(t.finalise_le), projet_titre: p ? p.titre : '' };
+    }).sort((a, b) => (a.cree_le < b.cree_le ? 1 : a.cree_le > b.cree_le ? -1 : 0) || (b.maj || 0) - (a.maj || 0));
+  }
 
   /* =========================================================
    * Rafraîchissements et démarrage

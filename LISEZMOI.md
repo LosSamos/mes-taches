@@ -68,6 +68,7 @@ L'agenda est lu seulement, jamais modifié. Les rendez-vous restent en mémoire 
 - **Lien d'un projet :** menu ⋯ → « Ajouter un lien… » (dossier Google Drive, site web…). Une icône 🔗 s'affiche après le nom du projet ; l'adresse complète n'apparaît pas (infobulle : « Dossier Google Drive », « anfitek.com »…).
 - **Modifier / supprimer une tâche :** jamais sur un simple clic. Double-clic sur le texte pour le modifier (Ctrl+B pour le gras), ou menu ⋯ au bout de la tâche : Modifier le texte, Lien, Répéter, Couleur, Supprimer (10 s pour annuler). Au doigt, le menu ⋯ regroupe ces actions.
 - **Ordre des tâches :** glisser la poignée ⠿ qui apparaît à gauche d'une tâche au survol (ou la sélectionner au clavier et utiliser ↑ ↓). Menu ⋯ du projet → « Trier les tâches… » : urgentes d'abord, alphabétique, plus anciennes ou plus récentes d'abord (tri ponctuel, avec Annuler).
+- **Images d'une tâche :** icône 🖼 au survol de la tâche (ou menu ⋯ → « Ajouter une image… ») : choisir des fichiers, les glisser, ou coller une capture (Ctrl+V). Réduites à 2400 px, chiffrées sur l'appareil puis envoyées dans le Drive (même hors ligne : envoi au retour d'Internet). Visionneuse plein écran (← →, télécharger, supprimer avec Annuler). Onglet « Images » : galerie de toutes les images, par mois, filtrable par projet.
 - **Lien d'une tâche :** au survol de la tâche, icône 🔗 « Ajouter un lien ». Une fois ajouté, l'icône reste au bout de la ligne (le petit chevron à côté permet de modifier ou retirer). Suit la tâche quand elle se répète.
 - **Bloc-notes temporaire :** icône crayon (ou touche « N »). Fenêtre flottante, déplaçable et redimensionnable, pour noter ou coller du texte. Rien n'est gardé : le contenu disparaît à la fermeture (8 s pour annuler) et au verrouillage. « + Tâche » (ou Ctrl+Entrée) enregistre le texte, ou la sélection, en tâche dans le projet choisi (ou « À classer »), au besoin une tâche par ligne.
 - **Filtres (une seule rangée) :** recherche (touche « / »), puis menus Groupement, Couleur, Dates, Projet et Tri. Chaque choix affiche son nombre de tâches ; un filtre actif devient noir avec un × pour le retirer, et une ligne « N tâches dans N projets · Tout effacer » apparaît.
@@ -107,4 +108,7 @@ Mes tâches/
   mes-taches.coffre                 le coffre (chiffré)
   copie-2026-11-17.coffre           copies quotidiennes (chiffrées)
   copie-2026-11-17-14h05-avant-import.coffre
+  <id>.image, <id>.mini             images jointes et miniatures (chiffrées)
 ```
+
+Une image supprimée va dans la corbeille du Drive (gardée 30 jours par Google). L'export .zip peut inclure les images (en clair, dans `images/`), et l'import les reprend.

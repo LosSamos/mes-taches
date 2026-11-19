@@ -301,7 +301,7 @@
   function modeleVide() {
     return {
       format: 'mes-taches', version: 2,
-      projets: {}, taches: {}, couleurs: {}, supprimes: {}, echeances: {},
+      projets: {}, taches: {}, couleurs: {}, supprimes: {}, echeances: {}, images: {},
       reglages: { veille_minutes: 15, maj: 0 },
       derniere_sauvegarde: null,
     };
@@ -310,7 +310,17 @@
   let M = modeleVide();
   let surChangement = () => {};
 
-  function changer() { surChangement(); }
+  let compteImagesCache = null;
+  function changer() { compteImagesCache = null; surChangement(); }
+
+  /** Nombre d'images par tâche (mis en cache jusqu'au prochain changement). */
+  function compteImages() {
+    if (!compteImagesCache) {
+      compteImagesCache = new Map();
+      for (const im of Object.values(M.images || {})) compteImagesCache.set(im.tache_id, (compteImagesCache.get(im.tache_id) || 0) + 1);
+    }
+    return compteImagesCache;
+  }
 
   function projetDe(id) {
     const p = M.projets[id];
@@ -355,7 +365,7 @@
   };
   const versTache = (t) => {
     const { maj: _m, copie_uid: _c, ...reste } = t;
-    return { ...reste, uid: t.id, recurrence: copie(t.recurrence) || null, couleur: t.couleur || 'blanc', couleur_depuis: t.couleur_depuis || null };
+    return { ...reste, uid: t.id, recurrence: copie(t.recurrence) || null, couleur: t.couleur || 'blanc', couleur_depuis: t.couleur_depuis || null, images: compteImages().get(t.id) || 0 };
   };
   const parOrdre = (a, b) => a.ordre - b.ordre || (a.cree_le < b.cree_le ? -1 : a.cree_le > b.cree_le ? 1 : 0) || (a.id < b.id ? -1 : 1);
 
@@ -462,6 +472,7 @@
     projet_supprimer(e) {
       const p = projetDe(e.id);
       for (const t of Object.values(M.taches)) if (t.projet_id === p.id) supprimerEnregistrement('taches', t.id);
+      for (const im of Object.values(M.images || {})) if (!M.taches[im.tache_id]) supprimerEnregistrement('images', im.id);
       for (const c of Object.values(M.couleurs)) if (c.projet_id === p.id) delete M.couleurs[c.id];
       supprimerEnregistrement('projets', p.id);
       changer();
@@ -525,6 +536,7 @@
       if (!t || typeof t !== 'object' || !t.id || !M.projets[t.projet_id]) throw new ErreurNoyau('Impossible de remettre cette tâche.');
       const { maj: _m, ...reste } = copie(t);
       ajouterEnregistrement('taches', { ...reste, texte: texteTache(reste.texte) });
+      for (const im of e.images || []) if (im && im.id && im.tache_id === t.id) { const { maj: _x, ...r } = copie(im); ajouterEnregistrement('images', r); }
       changer();
       return { tache: versTache(M.taches[t.id]) };
     },
@@ -545,9 +557,11 @@
 
     tache_supprimer(e) {
       tacheDe(e.id);
+      const images = Object.values(M.images || {}).filter((im) => im.tache_id === e.id).map((im) => copie(im));
+      for (const im of images) supprimerEnregistrement('images', im.id);
       supprimerEnregistrement('taches', e.id);
       changer();
-      return { ok: true };
+      return { ok: true, images };
     },
 
     recurrence_apercu(e) {
@@ -622,6 +636,54 @@
       toucher(ec);
       changer();
       return { echeance: copie(ec) };
+    },
+
+    /* ----- Images (la description ; les octets chiffrés sont gérés par stockage.js) ----- */
+
+    image_ajouter(e) {
+      const t = tacheDe(e.tache_id);
+      if (!/^[A-Za-z0-9-]{8,64}$/.test(String(e.id || ''))) throw new ErreurNoyau('Identifiant d’image invalide.');
+      const im = ajouterEnregistrement('images', {
+        id: e.id, tache_id: t.id, projet_id: t.projet_id,
+        nom: [...String(e.nom || 'image').trim()].slice(0, 120).join('') || 'image',
+        type: /^image\/(webp|jpeg|png|gif)$/.test(e.type) ? e.type : 'image/webp',
+        largeur: Math.max(0, Math.round(Number(e.largeur) || 0)), hauteur: Math.max(0, Math.round(Number(e.hauteur) || 0)),
+        taille: Math.max(0, Math.round(Number(e.taille) || 0)), cree_le: maintenant(),
+      });
+      changer();
+      return { image: copie(im) };
+    },
+
+    image_supprimer(e) {
+      const im = M.images?.[e.id];
+      if (!im) throw new ErreurNoyau('Image introuvable.');
+      const c = copie(im);
+      supprimerEnregistrement('images', e.id);
+      changer();
+      return { image: c };
+    },
+
+    image_reinserer(e) {
+      const im = e.image;
+      if (!im || !im.id || !M.taches[im.tache_id]) throw new ErreurNoyau('Impossible de remettre cette image.');
+      const { maj: _m, ...r } = copie(im);
+      ajouterEnregistrement('images', r);
+      changer();
+      return { image: copie(M.images[im.id]) };
+    },
+
+    /** Images d'une tâche, ou toutes (galerie), les plus récentes d'abord, avec leur tâche et leur projet. */
+    images(e = {}) {
+      const liste = Object.values(M.images || {})
+        .filter((im) => (!e.tache_id || im.tache_id === e.tache_id) && M.taches[im.tache_id])
+        .sort((a, b) => (a.cree_le < b.cree_le ? 1 : a.cree_le > b.cree_le ? -1 : 0) || (b.maj || 0) - (a.maj || 0))
+        .map((im) => {
+          const t = M.taches[im.tache_id];
+          const p = M.projets[t.projet_id];
+          return { ...copie(im), projet_id: t.projet_id, tache_texte: t.texte, tache_finalisee: Boolean(t.finalise_le), projet_titre: p ? p.titre : '', projet_couleur: p ? p.couleur : 'blanc', projet_archive: Boolean(p?.archive_le) };
+        });
+      if (e.tache_id) liste.reverse(); // dans une tâche : ordre d'ajout
+      return { images: liste };
     },
 
     groupements() {
@@ -717,7 +779,7 @@
     for (const src of [a.supprimes || {}, b.supprimes || {}]) {
       for (const [k, v] of Object.entries(src)) if (v > limite && (!r.supprimes[k] || v > r.supprimes[k])) r.supprimes[k] = v;
     }
-    for (const coll of ['projets', 'taches', 'echeances']) {
+    for (const coll of ['projets', 'taches', 'echeances', 'images']) {
       const ids = new Set([...Object.keys(a[coll] || {}), ...Object.keys(b[coll] || {})]);
       for (const id of ids) {
         const x = a[coll]?.[id], y = b[coll]?.[id];
@@ -741,7 +803,7 @@
   /** Signature du contenu (pour savoir si une fusion a changé quelque chose). */
   function signature(m) {
     const parts = [];
-    for (const coll of ['projets', 'taches', 'echeances']) for (const [k, v] of Object.entries(m[coll] || {}).sort()) parts.push(k + ':' + v.maj);
+    for (const coll of ['projets', 'taches', 'echeances', 'images']) for (const [k, v] of Object.entries(m[coll] || {}).sort()) parts.push(k + ':' + v.maj);
     parts.push(Object.keys(m.couleurs).length, Object.keys(m.supprimes).length, m.reglages.maj || 0);
     return parts.join('|');
   }
@@ -891,6 +953,20 @@
       entrees.set(dec.decode(octets.subarray(p + 46, p + 46 + ln)), { methode, tailleC, tailleN, local });
       p += 46 + ln + lx + lc;
     }
+    async function lireOctets(nom) {
+      const e = entrees.get(nom);
+      if (!e) return null;
+      if (e.tailleN > 100 * 1024 * 1024) throw new ErreurNoyau(`Fichier trop volumineux dans le .zip : ${nom}`);
+      const debut = e.local + 30 + v.getUint16(e.local + 26, true) + v.getUint16(e.local + 28, true);
+      const brut = octets.subarray(debut, debut + e.tailleC);
+      if (e.methode === 0) return brut.slice();
+      if (e.methode === 8) {
+        if (typeof DecompressionStream !== 'function') throw new ErreurNoyau('Ce navigateur ne sait pas lire ce .zip compressé.');
+        const flux = new Blob([brut]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+        return new Uint8Array(await new Response(flux).arrayBuffer());
+      }
+      throw new ErreurNoyau(`Compression non prise en charge dans le .zip : ${nom}`);
+    }
     async function lire(nom) {
       const e = entrees.get(nom);
       if (!e) return null;
@@ -905,10 +981,13 @@
       }
       throw new ErreurNoyau('Méthode de compression non prise en charge dans ce .zip.');
     }
-    return { noms: [...entrees.keys()], lire };
+    return { noms: [...entrees.keys()], lire, lireOctets };
   }
 
-  async function exporter({ periode = 'tout', encours = true, archives = true, couleurs = true } = {}) {
+  const EXT_IMAGE = { 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif' };
+
+  /** lireImage(id) → Promise<Uint8Array|null> : fourni par l'app (les octets sont chiffrés sur l'appareil). */
+  async function exporter({ periode = 'tout', encours = true, archives = true, couleurs = true, lireImage = null } = {}) {
     let annee = null;
     if (periode !== 'tout') {
       if (!/^\d{4}$/.test(String(periode))) throw new ErreurNoyau('Période invalide.');
@@ -920,10 +999,29 @@
       periode: String(periode), contenu: { en_cours: encours, archives, couleurs }, totaux: totaux(d),
     };
     const json = (x) => JSON.stringify(x, null, 4);
-    const blob = creerZip([
+    const fichiers = [
       ['manifeste.json', json(manifeste)], ['projets.json', json(d.projets)], ['taches.json', json(d.taches)],
       ['couleurs.json', json(d.couleurs)], ['taches.csv', construireCsv(d)],
-    ]);
+    ];
+    if (lireImage) {
+      const tachesIds = new Set(d.taches.map((t) => t.uid));
+      const descr = [];
+      let manquantes = 0;
+      for (const im of Object.values(M.images || {})) {
+        if (!tachesIds.has(im.tache_id)) continue;
+        let octets = null;
+        try { octets = await lireImage(im.id, im.type); } catch { octets = null; }
+        if (!octets) { manquantes++; continue; }
+        const fichier = `images/${im.id}.${EXT_IMAGE[im.type] || 'webp'}`;
+        fichiers.push([fichier, octets]);
+        descr.push({ uid: im.id, tache_uid: im.tache_id, nom: im.nom, type: im.type, largeur: im.largeur, hauteur: im.hauteur, taille: im.taille, cree_le: im.cree_le, fichier });
+      }
+      fichiers.push(['images.json', json(descr)]);
+      manifeste.totaux.images = descr.length;
+      if (manquantes) manifeste.images_manquantes = manquantes;
+      fichiers[0] = ['manifeste.json', json(manifeste)];
+    }
+    const blob = creerZip(fichiers);
     M.derniere_sauvegarde = maintenant();
     changer();
     return { blob, nom: `taches-${periode}_${aujourdhui()}.zip` };
@@ -997,12 +1095,29 @@
     });
     let periode = String(manifeste.periode ?? 'tout');
     if (periode !== 'tout' && !/^\d{4}$/.test(periode)) periode = 'tout';
+    // Images (2.14) : description + octets en clair dans le .zip
+    const descr = (await json('images.json', false)) || [];
+    donnees.images = [];
+    if (Array.isArray(descr)) {
+      for (const im of descr.slice(0, 5000)) {
+        if (!im || typeof im !== 'object' || !/^[A-Za-z0-9-]{8,64}$/.test(String(im.uid || '')) || typeof im.fichier !== 'string') continue;
+        const octets = await zip.lireOctets(prefixe + im.fichier);
+        if (!octets || !octets.length) continue;
+        donnees.images.push({
+          uid: im.uid, tache_uid: String(im.tache_uid || ''), nom: String(im.nom || 'image').slice(0, 120),
+          type: EXT_IMAGE[im.type] ? im.type : 'image/webp',
+          largeur: Number(im.largeur) || 0, hauteur: Number(im.hauteur) || 0, taille: octets.length,
+          cree_le: (() => { try { return dateHeure(im.cree_le, true) || maintenant(); } catch { return maintenant(); } })(),
+          octets,
+        });
+      }
+    }
     return { manifeste, periode, donnees };
   }
 
   /** Écrit des données d'échange : 'fusion' (ajoute ce qui manque) ou 'remplacer' (la période du fichier). */
   function ecrireEchange(d, mode, periode) {
-    const stats = { projets_ajoutes: 0, projets_mis_a_jour: 0, taches_ajoutees: 0, taches_ignorees: 0 };
+    const stats = { projets_ajoutes: 0, projets_mis_a_jour: 0, taches_ajoutees: 0, taches_ignorees: 0, images_ajoutees: 0, images_a_stocker: [] };
     if (mode === 'remplacer') {
       if (periode === 'tout') {
         for (const id of Object.keys(M.taches)) supprimerEnregistrement('taches', id);
@@ -1054,6 +1169,17 @@
       });
       stats.taches_ajoutees++;
     }
+    for (const im of d.images || []) {
+      const t = M.taches[im.tache_uid];
+      if (!t || M.images[im.uid]) continue;
+      ajouterEnregistrement('images', {
+        id: im.uid, tache_id: t.id, projet_id: t.projet_id, nom: im.nom, type: im.type,
+        largeur: im.largeur, hauteur: im.hauteur, taille: im.taille, cree_le: im.cree_le,
+      });
+      stats.images_a_stocker.push({ id: im.uid, type: im.type, octets: im.octets });
+      stats.images_ajoutees++;
+    }
+    if (mode === 'remplacer') for (const im of Object.values(M.images)) if (!M.taches[im.tache_id]) supprimerEnregistrement('images', im.id);
     if (mode === 'remplacer' && periode !== 'tout') {
       const dansFichier = new Set(d.projets.map((p) => p.uid));
       for (const p of Object.values(M.projets)) {
@@ -1073,12 +1199,12 @@
    * ======================================================= */
 
   window.Noyau = {
-    VERSION_APP: '2.13.0',
+    VERSION_APP: '2.14.0',
     GROUPEMENTS, COULEURS, ErreurNoyau,
     get groupements() { return groupementsAffiches(); },
     api,
     get modele() { return M; },
-    charger(m) { M = m ? normaliser(m) : modeleVide(); },
+    charger(m) { M = m ? normaliser(m) : modeleVide(); compteImagesCache = null; },
     vider() { M = modeleVide(); },
     modeleVide, fusionner, signature, remplacerTout, normaliser,
     surChangement(f) { surChangement = f; },
@@ -1091,7 +1217,7 @@
 
   function normaliser(m) {
     const n = { ...modeleVide(), ...copie(m) };
-    for (const k of ['projets', 'taches', 'couleurs', 'supprimes', 'echeances']) if (!n[k] || typeof n[k] !== 'object') n[k] = {};
+    for (const k of ['projets', 'taches', 'couleurs', 'supprimes', 'echeances', 'images']) if (!n[k] || typeof n[k] !== 'object') n[k] = {};
     if (!n.reglages || typeof n.reglages !== 'object') n.reglages = { veille_minutes: 15, maj: 0 };
     return n;
   }

@@ -170,14 +170,15 @@
    * Google Drive : requêtes REST
    * ======================================================= */
 
-  async function requete(methode, chemin, { query, corps, type, texte = false } = {}) {
+  async function requete(methode, chemin, { query, corps, type, texte = false, octets = false } = {}) {
     if (!jetonValide()) throw new ErreurSync('Reconnexion à Google nécessaire.', 'jeton');
     let url = API + chemin;
     if (query) url += '?' + new URLSearchParams(query);
     const entetes = { Authorization: `Bearer ${E.jeton.access_token}` };
     let body;
     if (corps !== undefined) {
-      if (typeof corps === 'string') { body = corps; entetes['Content-Type'] = type || 'application/json'; }
+      if (corps instanceof Blob) { body = corps; entetes['Content-Type'] = type || corps.type || 'application/octet-stream'; }
+      else if (typeof corps === 'string') { body = corps; entetes['Content-Type'] = type || 'application/json'; }
       else { body = JSON.stringify(corps); entetes['Content-Type'] = 'application/json'; }
     }
     let rep;
@@ -202,6 +203,7 @@
       throw err;
     }
     if (rep.status === 204) return null;
+    if (octets) return new Uint8Array(await rep.arrayBuffer());
     return texte ? rep.text() : rep.json();
   }
 
@@ -483,6 +485,7 @@
         definirStatut(E.generation !== E.generationEnvoyee ? 'attente' : 'ok');
         if (distantChange) for (const f of ecouteurs.distant) { try { f(); } catch (e) { console.error(e); } }
         copieQuotidienne().catch((e) => console.warn('Copie quotidienne :', e.message));
+        envoyerImages().then(() => nettoyerImages()).catch((e) => console.warn('Images :', e.message));
       } catch (e) {
         if (e.code === 'jeton') definirStatut('reconnexion');
         else if (e.code === 'reseau') definirStatut('hors-ligne', e.message);
@@ -645,6 +648,122 @@
   }
 
   /* =========================================================
+   * Images (2.14) : chaque image est un petit fichier chiffré à part
+   * (« img:ID » et « mini:ID » sur l'appareil, « ID.image » et « ID.mini » dans le dossier du Drive).
+   * Le coffre ne garde que leur description ; il reste donc léger à synchroniser.
+   * ======================================================= */
+
+  const imagesDrive = new Map();      // `${id}:${sorte}` → id du fichier dans le Drive
+  let imagesDriveListees = false;
+  let envoiImages = null;
+  let nettoyageFait = false;
+
+  async function listerImagesDrive() {
+    imagesDrive.clear();
+    let page;
+    do {
+      const r = await requete('GET', '/drive/v3/files', {
+        query: {
+          q: "appProperties has { key='role' and value='image' } and trashed=false",
+          fields: 'nextPageToken,files(id,appProperties)', pageSize: '1000', spaces: 'drive', ...(page ? { pageToken: page } : {}),
+        },
+      });
+      for (const f of r.files || []) imagesDrive.set(`${f.appProperties?.image_id}:${f.appProperties?.sorte}`, f.id);
+      page = r.nextPageToken;
+    } while (page);
+    imagesDriveListees = true;
+  }
+
+  async function attenteImages() { return (await lire('images_attente')) || []; }
+
+  /** Enregistre une image (et sa miniature) chiffrées sur l'appareil, puis l'envoie au Drive dès que possible. */
+  async function imageEnregistrer(id, { image, mini }) {
+    if (!E.cle) throw new ErreurSync('Coffre verrouillé.', 'verrou');
+    for (const [sorte, blob] of [['img', image], ['mini', mini]]) {
+      const c = await Coffre.chiffrerOctets(E.cle, new Uint8Array(await blob.arrayBuffer()));
+      await ecrire(`${sorte}:${id}`, c);
+    }
+    const a = await attenteImages();
+    if (!a.includes(id)) { a.push(id); await ecrire('images_attente', a); }
+    envoyerImages().catch(() => {});
+  }
+
+  /** Lit une image (« img » ou « mini ») : sur l'appareil, sinon dans le Drive (puis gardée sur l'appareil). */
+  async function imageLire(id, sorte = 'mini', type = 'image/webp') {
+    if (!E.cle) throw new ErreurSync('Coffre verrouillé.', 'verrou');
+    let c = await lire(`${sorte}:${id}`);
+    if (!c) {
+      if (!E.drive.actif) throw new ErreurSync('Image absente de cet appareil.', 'absente');
+      if (!jetonValide()) throw new ErreurSync('Reconnexion à Google nécessaire.', 'jeton');
+      const cle = `${id}:${sorte === 'img' ? 'image' : 'mini'}`;
+      if (!imagesDrive.has(cle)) await listerImagesDrive();
+      const fid = imagesDrive.get(cle);
+      if (!fid) throw new ErreurSync('Image pas encore arrivée dans le Drive.', 'absente');
+      c = await requete('GET', `/drive/v3/files/${encodeURIComponent(fid)}`, { query: { alt: 'media' }, octets: true });
+      await ecrire(`${sorte}:${id}`, c);
+    }
+    const o = await Coffre.dechiffrerOctets(E.cle, c);
+    return new Blob([o], { type });
+  }
+
+  function multipartBinaire(meta, octets) {
+    const frontiere = 'mt' + Math.random().toString(36).slice(2);
+    const debut = `--${frontiere}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${frontiere}\r\nContent-Type: application/octet-stream\r\n\r\n`;
+    return { corps: new Blob([debut, octets, `\r\n--${frontiere}--`]), type: `multipart/related; boundary=${frontiere}` };
+  }
+
+  /** Envoie au Drive les images ajoutées sur cet appareil (y compris hors ligne). */
+  function envoyerImages() {
+    if (envoiImages) return envoiImages;
+    envoiImages = (async () => {
+      try {
+        if (!E.cle || !E.drive.actif || !jetonValide()) return;
+        let a = await attenteImages();
+        if (!a.length) return;
+        const dossier = await assurerDossier();
+        if (!imagesDriveListees) await listerImagesDrive();
+        for (const id of [...a]) {
+          if (Noyau.modele.images?.[id]) {
+            for (const [locale, sorte] of [['img', 'image'], ['mini', 'mini']]) {
+              if (imagesDrive.has(`${id}:${sorte}`)) continue;
+              const c = await lire(`${locale}:${id}`);
+              if (!c) continue;
+              const { corps, type } = multipartBinaire({
+                name: `${id}.${sorte}`, parents: [dossier], mimeType: 'application/octet-stream',
+                appProperties: { role: 'image', app: 'mes-taches', image_id: id, sorte },
+              }, c);
+              const f = await requete('POST', '/upload/drive/v3/files', { query: { uploadType: 'multipart', fields: 'id' }, corps, type });
+              imagesDrive.set(`${id}:${sorte}`, f.id);
+            }
+          }
+          a = (await attenteImages()).filter((x) => x !== id);
+          await ecrire('images_attente', a);
+        }
+      } finally { envoiImages = null; }
+    })();
+    return envoiImages;
+  }
+
+  /** Met à la corbeille du Drive (30 jours) les images supprimées, et les retire de l'appareil. Une fois par séance. */
+  async function nettoyerImages() {
+    if (nettoyageFait || !E.cle) return;
+    nettoyageFait = true;
+    const supprimees = Noyau.modele.supprimes || {};
+    const locales = await kv('readonly', (st) => st.getAllKeys());
+    for (const k of locales || []) {
+      const m = /^(img|mini):(.+)$/.exec(k);
+      if (m && supprimees[m[2]]) await effacer(k);
+    }
+    if (!E.drive.actif || !jetonValide()) return;
+    await listerImagesDrive();
+    for (const [cle, fid] of imagesDrive) {
+      const id = cle.split(':')[0];
+      if (!supprimees[id]) continue;
+      try { await requete('PATCH', `/drive/v3/files/${encodeURIComponent(fid)}`, { corps: { trashed: true } }); imagesDrive.delete(cle); } catch { /* on réessaiera */ }
+    }
+  }
+
+  /* =========================================================
    * Déclencheurs automatiques
    * ======================================================= */
 
@@ -660,7 +779,8 @@
     ErreurSync,
     chargerEtat, etat, reprendre, deverrouiller, recuperer, creer, verrouiller, changerMotDePasse, nouvelleCleRecuperation,
     marquerChangement, enregistrerMaintenant, synchroniser, prolonger, memoriserCle,
-    connecterGoogle, googleConfigure, jetonValide, agendaAutorise, reglerAgenda, recupererDuDrive, activerDrive, remplacerCoffreDrive, prendreCoffreDrive,
+    connecterGoogle, googleConfigure, jetonValide, agendaAutorise, reglerAgenda, recupererDuDrive,
+    imageEnregistrer, imageLire, envoyerImages, imagesEnAttente: attenteImages, activerDrive, remplacerCoffreDrive, prendreCoffreDrive,
     deconnecterDrive, oublierAppareil, listerCopies, restaurerCopie, copieAvant,
     surStatut(f) { ecouteurs.statut.add(f); return () => ecouteurs.statut.delete(f); },
     surDistant(f) { ecouteurs.distant.add(f); return () => ecouteurs.distant.delete(f); },

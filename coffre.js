@@ -184,6 +184,24 @@
     return JSON.parse(dec.decode(octets));
   }
 
+  /** Octets (images) : [iv 12 octets | données chiffrées AES-256-GCM], avec la même clé de données que le coffre. */
+  async function chiffrerOctets(cle, octets) {
+    const iv = aleatoire(12);
+    const c = new Uint8Array(await subtle.encrypt({ name: 'AES-GCM', iv }, cle, octets));
+    const r = new Uint8Array(12 + c.length);
+    r.set(iv, 0); r.set(c, 12);
+    return r;
+  }
+
+  async function dechiffrerOctets(cle, octets) {
+    const o = octets instanceof Uint8Array ? octets : new Uint8Array(octets);
+    try {
+      return new Uint8Array(await subtle.decrypt({ name: 'AES-GCM', iv: o.subarray(0, 12) }, cle, o.subarray(12)));
+    } catch {
+      throw new ErreurCoffre('Image illisible : elle appartient à un autre coffre ou elle est abîmée.');
+    }
+  }
+
   /** Enveloppe seule (sans les données), à garder en mémoire. */
   function enveloppeDe(fichier) {
     const { iv: _a, donnees: _b, compression: _c, ...entete } = lire(fichier);
@@ -192,6 +210,6 @@
 
   window.Coffre = {
     ErreurCoffre, creer, lire, ouvrir, ouvrirAvecRecuperation, changerMotDePasse, nouvelleRecuperation,
-    chiffrer, dechiffrer, enveloppeDe, normaliserCle, verifierMotDePasse, ITERATIONS,
+    chiffrer, dechiffrer, chiffrerOctets, dechiffrerOctets, enveloppeDe, normaliserCle, verifierMotDePasse, ITERATIONS,
   };
 })();
