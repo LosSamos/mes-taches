@@ -649,6 +649,7 @@
         type: /^image\/(webp|jpeg|png|gif)$/.test(e.type) ? e.type : 'image/webp',
         largeur: Math.max(0, Math.round(Number(e.largeur) || 0)), hauteur: Math.max(0, Math.round(Number(e.hauteur) || 0)),
         taille: Math.max(0, Math.round(Number(e.taille) || 0)), cree_le: maintenant(),
+        prise_le: (() => { try { return e.prise_le ? dateHeure(e.prise_le, true) : null; } catch { return null; } })(),
       });
       changer();
       return { image: copie(im) };
@@ -1056,7 +1057,7 @@
         if (!octets) { manquantes++; continue; }
         const fichier = `images/${im.id}.${EXT_IMAGE[im.type] || 'webp'}`;
         fichiers.push([fichier, octets]);
-        descr.push({ uid: im.id, tache_uid: im.tache_id, nom: im.nom, type: im.type, largeur: im.largeur, hauteur: im.hauteur, taille: im.taille, cree_le: im.cree_le, fichier });
+        descr.push({ uid: im.id, tache_uid: im.tache_id, nom: im.nom, type: im.type, largeur: im.largeur, hauteur: im.hauteur, taille: im.taille, cree_le: im.cree_le, prise_le: im.prise_le || null, garder: Boolean(im.garder), fichier });
       }
       fichiers.push(['images.json', json(descr)]);
       manifeste.totaux.images = descr.length;
@@ -1150,6 +1151,8 @@
           type: EXT_IMAGE[im.type] ? im.type : 'image/webp',
           largeur: Number(im.largeur) || 0, hauteur: Number(im.hauteur) || 0, taille: octets.length,
           cree_le: (() => { try { return dateHeure(im.cree_le, true) || maintenant(); } catch { return maintenant(); } })(),
+          prise_le: (() => { try { return dateHeure(im.prise_le, true); } catch { return null; } })(),
+          garder: Boolean(im.garder),
           octets,
         });
       }
@@ -1216,7 +1219,7 @@
       if (!t || M.images[im.uid]) continue;
       ajouterEnregistrement('images', {
         id: im.uid, tache_id: t.id, projet_id: t.projet_id, nom: im.nom, type: im.type,
-        largeur: im.largeur, hauteur: im.hauteur, taille: im.taille, cree_le: im.cree_le,
+        largeur: im.largeur, hauteur: im.hauteur, taille: im.taille, cree_le: im.cree_le, prise_le: im.prise_le || null, garder: Boolean(im.garder),
       });
       stats.images_a_stocker.push({ id: im.uid, type: im.type, octets: im.octets });
       stats.images_ajoutees++;
@@ -1241,7 +1244,7 @@
    * ======================================================= */
 
   window.Noyau = {
-    VERSION_APP: '2.15.0',
+    VERSION_APP: '2.15.1',
     GROUPEMENTS, COULEURS, ErreurNoyau,
     get groupements() { return groupementsAffiches(); },
     JOURS_IMAGES: 31,

@@ -924,3 +924,6 @@ a.aj-ev-titre:hover { text-decoration: underline; }
 .barre-selection .aj-lien { margin-left: 0; }
 .bouton-danger:disabled, .barre-selection .bouton:disabled { opacity: .4; cursor: default; }
 .page-images .select-galerie { flex: 0 1 220px; }
+.galerie-date { color: var(--date); font-size: 11px; font-variant-numeric: tabular-nums; }
+.case-date { display: block; padding: 4px 2px 0; }
+.vis-legende .vis-dates { color: rgba(255, 255, 255, .6); font-size: 12px; font-variant-numeric: tabular-nums; }

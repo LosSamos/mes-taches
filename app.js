@@ -3426,6 +3426,57 @@
     return { blob, largeur: c.width, hauteur: c.height };
   }
 
+  /** Date de prise de vue d'une photo JPEG (EXIF DateTimeOriginal), sinon null. Lecture minimale, sans bibliothèque. */
+  async function dateExif(fichier) {
+    try {
+      if (!/jpe?g/i.test(fichier.type)) return null;
+      const v = new DataView(await fichier.slice(0, 256 * 1024).arrayBuffer());
+      if (v.getUint16(0) !== 0xFFD8) return null;
+      let p = 2;
+      while (p + 4 < v.byteLength) {
+        const marqueur = v.getUint16(p), taille = v.getUint16(p + 2);
+        if (marqueur === 0xFFE1 && v.getUint32(p + 4) === 0x45786966) {
+          const t = p + 10, le = v.getUint16(t) === 0x4949;
+          const u16 = (o) => v.getUint16(t + o, le), u32 = (o) => v.getUint32(t + o, le);
+          const chercher = (ifd, tag) => {
+            const n = u16(ifd);
+            for (let i = 0; i < n; i++) { const e = ifd + 2 + i * 12; if (u16(e) === tag) return e; }
+            return -1;
+          };
+          const lireTexte = (e) => { const o = u32(e + 8); let r = ''; for (let i = 0; i < 19; i++) r += String.fromCharCode(v.getUint8(t + o + i)); return r; };
+          const ifd0 = u32(4);
+          const exif = chercher(ifd0, 0x8769);
+          let e = exif >= 0 ? chercher(u32(exif + 8), 0x9003) : -1;
+          if (e < 0) e = chercher(ifd0, 0x0132);
+          if (e < 0) return null;
+          const m = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/.exec(lireTexte(e));
+          return m ? `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}:${m[6]}` : null;
+        }
+        if (marqueur === 0xFFDA) break;
+        p += 2 + taille;
+      }
+    } catch { /* pas d'EXIF lisible */ }
+    return null;
+  }
+
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const versDateHeure = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+
+  /** « 19 nov. 2026, 08:21:05 » */
+  function dateHeureSecondes(texte) {
+    if (!texte) return '';
+    const d = lireDate(texte);
+    return `${d.getDate() === 1 ? '1er' : d.getDate()} ${MOIS_COURTS[d.getMonth()]} ${d.getFullYear()}, ${texte.slice(11, 19)}`;
+  }
+
+  /** Date de prise : EXIF d'une photo, sinon date du fichier choisi (pas pour une capture collée, datée de maintenant). */
+  async function datePrise(f) {
+    const exif = await dateExif(f);
+    if (exif) return exif;
+    if (f.lastModified && Math.abs(Date.now() - f.lastModified) > 60000) return versDateHeure(new Date(f.lastModified));
+    return null;
+  }
+
   /** Réduit l'image (2400 px au plus) et fait une miniature (360 px). Garde l'original s'il est déjà plus léger. */
   async function preparerImage(fichier, { seulementMini = false } = {}) {
     if (!/^image\//.test(fichier.type || '')) throw new Error('Ce fichier n’est pas une image.');
@@ -3481,8 +3532,9 @@
   }
 
   /** Vignette avec ses petits boutons : conserver (en haut à gauche), supprimer (en haut à droite), jours restants. */
-  function caseImage(im, { onOuvrir, apres, selection = null }) {
+  function caseImage(im, { onOuvrir, apres, selection = null, date = false }) {
     const cadre = vignette(im, { onclick: onOuvrir });
+    cadre.title = `${im.nom} — ajoutée le ${dateHeureSecondes(im.cree_le)}` + (im.prise_le && im.prise_le !== im.cree_le ? `, prise le ${dateHeureSecondes(im.prise_le)}` : '');
     const garder = Boolean(im.garder);
     const reste = joursRestants(im);
     const enSelection = selection !== null;
@@ -3502,7 +3554,8 @@
         },
       }, icone('signet', 14, 2.2)) : null,
       !garder ? h('span', { class: 'expire-image' + (reste <= 7 ? ' bientot' : ''), title: `Retirée automatiquement dans ${Math.max(0, reste)} jour${reste > 1 ? 's' : ''}` }, `${Math.max(0, reste)} j`) : null,
-      !enSelection ? h('button', { type: 'button', class: 'retirer-image', 'aria-label': `Supprimer ${im.nom}`, title: 'Supprimer l’image', onclick: (e) => { e.stopPropagation(); supprimerImage(im, apres); } }, icone('fermer', 13, 2.6)) : null);
+      !enSelection ? h('button', { type: 'button', class: 'retirer-image', 'aria-label': `Supprimer ${im.nom}`, title: 'Supprimer l’image', onclick: (e) => { e.stopPropagation(); supprimerImage(im, apres); } }, icone('fermer', 13, 2.6)) : null,
+      date ? h('time', { class: 'galerie-date case-date', datetime: im.cree_le.replace(' ', 'T') }, dateHeureSecondes(im.cree_le)) : null);
   }
 
   /* ---------- Bouton sur la ligne de tâche ---------- */
@@ -3528,7 +3581,8 @@
         const id = crypto.randomUUID();
         await Sync.imageEnregistrer(id, { image: p.image, mini: p.mini });
         const nom = f.name && f.name !== 'image.png' ? f.name : `capture-${iso(new Date())}.${p.type.split('/')[1]}`;
-        await api('image_ajouter', { methode: 'POST', donnees: { id, tache_id: t.id, nom, type: p.type, largeur: p.largeur, hauteur: p.hauteur, taille: p.image.size } });
+        const prise_le = await datePrise(f);
+        await api('image_ajouter', { methode: 'POST', donnees: { id, tache_id: t.id, nom, type: p.type, largeur: p.largeur, hauteur: p.hauteur, taille: p.image.size, prise_le } });
         n++;
       } catch (e) { toast(`Image non ajoutée : ${e.message}`, { erreur: true }); }
     }
@@ -3545,7 +3599,7 @@
     const entree = h('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true });
     const remplir = async () => {
       const { images } = await api('images', { donnees: { tache_id: t.id } });
-      grille.replaceChildren(...images.map((im, i) => caseImage(im, { onOuvrir: () => ouvrirVisionneuse(images, i, { depuisTache: true, apresSuppression: remplir }), apres: remplir })));
+      grille.replaceChildren(...images.map((im, i) => caseImage(im, { onOuvrir: () => ouvrirVisionneuse(images, i, { depuisTache: true, apresSuppression: remplir }), apres: remplir, date: true })));
       grille.hidden = !images.length;
     };
     const ajouter = async (fichiers) => {
@@ -3612,7 +3666,8 @@
       compteur.textContent = liste.length > 1 ? `${i + 1} / ${liste.length}` : '';
       precedent.hidden = suivant.hidden = liste.length < 2;
       legende.replaceChildren(h('strong', null, im.tache_texte ? texteBrut(im.tache_texte) : im.nom),
-        h('span', null, [im.projet_titre, im.nom, im.cree_le ? dateCourte(lireDate(im.cree_le)) : null, im.tache_finalisee ? 'tâche archivée' : null].filter(Boolean).join(' · ')));
+        h('span', null, [im.projet_titre, im.nom, im.tache_finalisee ? 'tâche archivée' : null].filter(Boolean).join(' · ')),
+        h('span', { class: 'vis-dates' }, `Ajoutée le ${dateHeureSecondes(im.cree_le)}` + (im.prise_le && im.prise_le !== im.cree_le ? ` · prise le ${dateHeureSecondes(im.prise_le)}` : '')));
       actions.replaceChildren();
       ajouter(actions, [
         compteur, telecharger,
@@ -3706,7 +3761,8 @@
           h('div', { class: 'galerie-grille' }, items.map(([i, im]) => h('figure', { class: 'galerie-item' },
             caseImage(im, { onOuvrir: () => (sel ? basculer(im) : ouvrirVisionneuse(liste, i)), apres: async () => rendre(), selection: sel }),
             h('figcaption', null, h('span', { class: 'galerie-tache' }, texteBrut(im.tache_texte)),
-              h('span', { class: 'galerie-projet' }, im.projet_titre + (im.tache_finalisee ? ' · archivée' : '')))))))))
+              h('span', { class: 'galerie-projet' }, im.projet_titre + (im.tache_finalisee ? ' · archivée' : '')),
+              h('time', { class: 'galerie-date', datetime: im.cree_le.replace(' ', 'T'), title: im.prise_le && im.prise_le !== im.cree_le ? `Prise le ${dateHeureSecondes(im.prise_le)}` : 'Date d’ajout' }, dateHeureSecondes(im.cree_le)))))))))
         : h('div', { class: 'vide' }, h('h2', null, toutes.length ? 'Aucune image pour ces filtres' : 'Aucune image'),
           h('p', null, toutes.length ? 'Change le projet ou le type d’images.' : 'Ajoute une image ou une capture d’écran à une tâche : icône 🖼 au survol de la tâche, ou menu ⋯ → « Ajouter une image… ».')),
       barreSelection);
