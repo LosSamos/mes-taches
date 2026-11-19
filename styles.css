@@ -572,3 +572,9 @@ a.aj-ev-titre:hover { text-decoration: underline; }
   html[data-imp-couleur="nb"] .pastille-tache[data-couleur$="-p"] .rond, html[data-imp-couleur="nb"] .pastille-fixe[data-couleur$="-p"] .rond { background: #fff; box-shadow: inset 0 0 0 1.4px #1C1B19; }
   html[data-imp-couleur="nb"] #entete-impression p, html[data-imp-couleur="nb"] .tache-date, html[data-imp-couleur="nb"] .meta { color: #1C1B19; }
 }
+
+/* ---------- Logo (2.4.1) ---------- */
+.titre-app { display: flex; align-items: center; gap: 12px; }
+.titre-app .logo { flex: none; width: 36px; height: 36px; display: block; }
+@media (max-width: 560px) { .titre-app { gap: 10px; } .titre-app .logo { width: 30px; height: 30px; } }
+@media print { #entete-impression .titre-app { gap: 8px; } #entete-impression .logo { width: 24px; height: 24px; } }

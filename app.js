@@ -883,7 +883,7 @@
     return h('header', { class: 'entete' },
       h('div', { class: 'entete-haut' },
         h('div', null,
-          h('h1', null, 'Mes tâches'),
+          h('h1', { class: 'titre-app' }, h('img', { class: 'logo', src: 'icone.svg', alt: '', width: '36', height: '36' }), 'Mes tâches'),
           h('p', { class: 'sous-titre' }, `Semaine du ${fmtJourMois.format(lundi)}`, puceSync())),
         sousLaDate,
         h('div', { class: 'actions-entete' },
@@ -2435,7 +2435,7 @@
       total = `${n} tâche${n > 1 ? 's' : ''}, ${sel.length} projet${sel.length > 1 ? 's' : ''}`;
     }
     zone.replaceChildren(
-      h('div', null, h('h1', null, 'Mes tâches'), h('p', null, sousTitre)),
+      h('div', null, h('h1', { class: 'titre-app' }, h('img', { class: 'logo', src: 'icone.svg', alt: '', width: '28', height: '28' }), 'Mes tâches'), h('p', null, sousTitre)),
       h('div', { class: 'droite' }, h('p', null, `Imprimé le ${fmtJourMois.format(new Date())}`), h('p', null, total)));
     window.print();
   }
