@@ -1697,7 +1697,7 @@
     const li = h('li', { class: 'tache', 'data-id': t.id },
       h('input', { type: 'checkbox', 'aria-label': `Archiver : ${texteBrut(t.texte)}`, onchange: (e) => finaliser(t, li, e.currentTarget) }),
       pastilleTache(t),
-      texte, rec,
+      texte, lienTache(t), rec,
       h('span', { class: 'tache-date', title: `Créée le ${dateLongue(cree)}` }, dateCourte(cree)));
     return li;
   }
@@ -1725,12 +1725,13 @@
     }, icone('lien', 15, 2.2));
   }
 
-  function editerLienProjet(p, ancre) {
-    const champ = h('input', { type: 'url', class: 'champ-petit champ-lien', inputmode: 'url', placeholder: 'Coller un lien : dossier Drive, site web…', value: p.lien || '', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Adresse du lien' });
+  /** Petite fenêtre pour ajouter, modifier ou retirer un lien (projet ou tâche). */
+  function editerLien(ancre, { titre, actuel, enregistrer, aide }) {
+    const champ = h('input', { type: 'url', class: 'champ-petit champ-lien', inputmode: 'url', placeholder: 'Coller un lien : dossier Drive, site web, courriel…', value: actuel || '', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Adresse du lien' });
     const apercu = h('p', { class: 'lien-apercu' });
     const majApercu = () => {
       const v = champ.value.trim();
-      if (!v) { apercu.textContent = 'Une icône 🔗 apparaîtra à côté du nom du projet.'; return; }
+      if (!v) { apercu.textContent = aide; return; }
       const url = /^[a-z][a-z0-9+.-]*:/i.test(v) ? v : `https://${v}`;
       const d = decrireLien(url);
       apercu.textContent = d.hote ? `→ ${d.nom}` : 'Adresse à vérifier';
@@ -1740,20 +1741,51 @@
     const valider = async () => {
       const v = champ.value.trim();
       fermerPopover(true);
-      const ok = await modifierProjet(p, { lien: v || null });
-      if (ok && v && p.lien) toast(`Lien ajouté : ${decrireLien(p.lien).nom}`);
+      const lien = await enregistrer(v || null);
+      if (lien) toast(`Lien ajouté : ${decrireLien(lien).nom}`);
     };
     champ.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); valider(); } });
     ouvrirPopover(ancre, [
-      h('div', { class: 'popover-titre' }, p.lien ? 'Modifier le lien' : 'Ajouter un lien'),
+      h('div', { class: 'popover-titre' }, actuel ? `Modifier le lien ${titre}` : `Ajouter un lien ${titre}`),
       champ, apercu,
       h('div', { class: 'pied-pop' },
-        p.lien ? h('button', { type: 'button', class: 'bouton bouton-texte', onclick: async () => { fermerPopover(true); await modifierProjet(p, { lien: null }); toast('Lien retiré'); } }, 'Retirer') : null,
+        actuel ? h('button', { type: 'button', class: 'bouton bouton-texte a-gauche', onclick: async () => { fermerPopover(true); await enregistrer(null); toast('Lien retiré'); } }, 'Retirer') : null,
         h('button', { type: 'button', class: 'bouton bouton-texte', onclick: () => fermerPopover(true) }, 'Annuler'),
         h('button', { type: 'button', class: 'bouton bouton-principal', onclick: valider }, 'Enregistrer')),
-    ], { titre: 'Lien du projet', classe: 'pop-lien' });
+    ], { titre: 'Lien', classe: 'pop-lien', aligner: 'gauche' });
     champ.focus(); champ.select();
   }
+
+  function editerLienProjet(p, ancre) {
+    editerLien(ancre, {
+      titre: 'du projet', actuel: p.lien, aide: 'Une icône 🔗 apparaîtra à côté du nom du projet.',
+      enregistrer: async (v) => { const ok = await modifierProjet(p, { lien: v }); return ok && v ? p.lien : null; },
+    });
+  }
+
+  function lienTache(t) {
+    if (t.lien && /^https?:\/\//i.test(t.lien)) {
+      const { nom } = decrireLien(t.lien);
+      return h('span', { class: 'lien-tache-zone' },
+        h('a', { class: 'lien-tache', href: t.lien, target: '_blank', rel: 'noopener noreferrer', title: `Ouvrir : ${nom}`, 'aria-label': `Ouvrir le lien de la tâche (${nom})` }, icone('lien', 14, 2.2)),
+        h('button', { type: 'button', class: 'lien-modifier', 'aria-label': 'Modifier le lien de la tâche', title: 'Modifier le lien', 'aria-haspopup': 'dialog', 'aria-expanded': 'false', onclick: (e) => editerLienTache(t, e.currentTarget) }, icone('bas', 12, 2.4)));
+    }
+    return h('button', { type: 'button', class: 'rec-bouton lien-bouton', 'aria-label': 'Ajouter un lien à cette tâche', title: 'Ajouter un lien', 'aria-haspopup': 'dialog', 'aria-expanded': 'false', onclick: (e) => editerLienTache(t, e.currentTarget) }, icone('lien', 14, 2.2));
+  }
+
+  function editerLienTache(t, ancre) {
+    editerLien(ancre, {
+      titre: 'de la tâche', actuel: t.lien, aide: 'Une icône 🔗 apparaîtra au bout de la tâche.',
+      enregistrer: async (v) => {
+        const r = await essayer(() => api('tache_modifier', { methode: 'POST', donnees: { id: t.id, lien: v } }));
+        if (!r) return null;
+        Object.assign(t, r.tache);
+        if (!editionActive) rendre();
+        return v ? t.lien : null;
+      },
+    });
+  }
+
 
   /** Couleur écrite en toutes lettres, visible seulement à l'impression noir et blanc. */
   function libelleCouleurImpression(c) {
@@ -2318,6 +2350,7 @@
           return h('li', { class: 'arch-tache' },
             t.couleur && t.couleur !== 'blanc' ? h('span', { class: 'pastille-fixe', 'data-couleur': t.couleur, title: `Couleur : ${COULEURS[t.couleur]?.nom}` }, h('span', { class: 'rond' })) : null,
             texte,
+            t.lien && /^https?:\/\//i.test(t.lien) ? h('a', { class: 'lien-tache', href: t.lien, target: '_blank', rel: 'noopener noreferrer', title: `Ouvrir : ${decrireLien(t.lien).nom}`, 'aria-label': `Ouvrir le lien (${decrireLien(t.lien).nom})` }, icone('lien', 14, 2.2)) : null,
             t.recurrence && h('span', { class: 'rec' }, icone('recurrence', 12, 2.2), libelleRecurrence(t.recurrence)),
             h('span', { class: 'meta', title: `Créée le ${dateLongue(lireDate(t.cree_le))}` }, `créée ${dateCourte(lireDate(t.cree_le))}`),
             h('span', { class: 'meta fort', title: `Finalisée le ${dateLongue(lireDate(t.finalise_le))}` }, `finalisée ${dateCourte(lireDate(t.finalise_le))}`),

@@ -460,6 +460,7 @@
       const t = tacheDe(e.id);
       if ('texte' in e) t.texte = texteTache(e.texte);
       if ('recurrence' in e) t.recurrence = recurrenceValider(e.recurrence);
+      if ('lien' in e) t.lien = lienValide(e.lien);
       if ('couleur' in e) {
         const c = couleurTacheValide(e.couleur);
         if (c !== (t.couleur || 'blanc')) { t.couleur = c; t.couleur_depuis = c === 'blanc' ? null : maintenant(); }
@@ -482,7 +483,7 @@
             id: copieUid, projet_id: t.projet_id, texte: t.texte, ordre: t.ordre,
             cree_le: `${prochaine} 00:00:00`, finalise_le: null,
             recurrence: r.type === 'date' ? null : r, copie_uid: null,
-            couleur: t.couleur || 'blanc', couleur_depuis: t.couleur_depuis || null,
+            couleur: t.couleur || 'blanc', couleur_depuis: t.couleur_depuis || null, lien: t.lien || null,
           });
         }
       }
@@ -688,7 +689,7 @@
       taches: taches.map((t) => ({
         uid: t.id, projet_uid: t.projet_id, texte: t.texte, ordre: t.ordre, cree_le: t.cree_le,
         finalise_le: t.finalise_le, recurrence: t.recurrence || null, copie_uid: t.copie_uid || null,
-        couleur: t.couleur || 'blanc', couleur_depuis: t.couleur_depuis || null,
+        couleur: t.couleur || 'blanc', couleur_depuis: t.couleur_depuis || null, lien: t.lien || null,
       })),
       couleurs: couleurs ? historique([...ids]).map((c) => ({ projet_uid: c.projet_id, couleur: c.couleur, le: c.le })) : [],
     };
@@ -873,6 +874,7 @@
         recurrence: recurrenceValider(t.recurrence ?? null), copie_uid: t.copie_uid ? chaineUid(t.copie_uid) : null,
         couleur: COULEURS.includes(t.couleur) && t.couleur !== 'gris' ? t.couleur : 'blanc',
         couleur_depuis: COULEURS.includes(t.couleur) && t.couleur !== 'gris' && t.couleur !== 'blanc' ? (() => { try { return dateHeure(t.couleur_depuis, true); } catch { return null; } })() : null,
+        lien: (() => { try { return lienValide(t.lien); } catch { return null; } })(),
       });
     }
     const couleurs = [];
@@ -951,7 +953,7 @@
       ajouterEnregistrement('taches', {
         id: t.uid, projet_id: t.projet_uid, texte: t.texte, ordre: t.ordre, cree_le: t.cree_le,
         finalise_le: t.finalise_le, recurrence: t.recurrence, copie_uid: t.copie_uid,
-        couleur: t.couleur || 'blanc', couleur_depuis: t.couleur_depuis || null,
+        couleur: t.couleur || 'blanc', couleur_depuis: t.couleur_depuis || null, lien: t.lien || null,
       });
       stats.taches_ajoutees++;
     }
@@ -974,7 +976,7 @@
    * ======================================================= */
 
   window.Noyau = {
-    VERSION_APP: '2.9.0',
+    VERSION_APP: '2.10.0',
     GROUPEMENTS, COULEURS, ErreurNoyau,
     api,
     get modele() { return M; },
