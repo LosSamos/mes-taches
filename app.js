@@ -1233,7 +1233,7 @@
     const auj = iso(new Date());
     const enRetard = liste.filter((x) => x.date < auj).length;
     const replie = !large && S.payReplie;
-    const lien = /^https:\/\//.test(m.reglages.lien_comptes || '') ? m.reglages.lien_comptes : null;
+    const liens = LIENS_FINANCES.map((l) => ({ ...l, url: /^https:\/\//.test(m.reglages[l.cle] || '') ? m.reglages[l.cle] : null })).filter((l) => l.url);
 
     const titre = h('div', { class: 'aj-titre' }, h('h2', null, 'Paiements à venir'),
       h('span', { class: 'aj-date' }, enRetard ? `${enRetard} en retard` : liste.length ? `Prochain : ${fmtCourt.format(lireDate(liste[0].date))}` : 'Taxes et remises'));
@@ -1268,10 +1268,17 @@
     return h('section', { class: 'aujourdhui paiements sans-impression' + (replie ? ' replie' : ''), 'aria-label': 'Paiements à venir' },
       entete,
       replie ? null : h('div', { class: 'aj-corps' }, corps,
-        (lien || !large) ? h('div', { class: 'aj-section pay-pied' },
-          lien ? h('a', { href: lien, target: '_blank', rel: 'noopener noreferrer', class: 'aj-lien pay-lien' }, 'Ouvrir mon état de comptes ↗') : null,
+        (liens.length || !large) ? h('div', { class: 'aj-section pay-pied' },
+          liens.length ? h('div', { class: 'pay-liens' }, liens.map((l) => h('a', { href: l.url, target: '_blank', rel: 'noopener noreferrer', class: 'aj-lien pay-lien' }, `${l.court} ↗`))) : null,
           !large ? h('button', { type: 'button', class: 'aj-lien', onclick: () => allerACarte('carte-paiements') }, 'Modifier la liste') : null) : null));
   }
+
+  /** Liens vers tes fichiers, au bas du bloc « Paiements à venir » (gardés chiffrés dans les réglages). */
+  const LIENS_FINANCES = [
+    { cle: 'lien_comptes', court: 'État de comptes', libelle: 'Lien vers ton état de comptes' },
+    { cle: 'lien_retard', court: 'Comptes en retard', libelle: 'Lien vers tes comptes en retard' },
+    { cle: 'lien_travaux', court: 'Travaux en cours', libelle: 'Lien vers tes travaux en cours' },
+  ];
 
   /* ---------- Bloc « Prochaine paye » ---------- */
 
@@ -1465,12 +1472,16 @@
     const manquants = ['def-das-ca', 'def-das-qc', 'def-tps-tvq', 'def-registre', 'def-cnesst'].some((id) => !m.echeances?.[id]);
     const ed = S.ech.edition;
 
-    const lien = h('input', { id: 'lien-comptes', type: 'url', inputmode: 'url', placeholder: 'https://docs.google.com/spreadsheets/…', value: m.reglages.lien_comptes || '', autocomplete: 'off', spellcheck: 'false' });
-    lien.addEventListener('change', () => {
-      const v = lien.value.trim();
-      if (v && !/^https:\/\//.test(v)) { toast('Le lien doit commencer par https://', { erreur: true }); return; }
-      Noyau.changerReglages({ lien_comptes: v });
-      toast(v ? 'Lien enregistré.' : 'Lien retiré.');
+    const champsLiens = LIENS_FINANCES.map((l) => {
+      const id = 'lien-' + l.cle.replace('lien_', '');
+      const champ = h('input', { id, type: 'url', inputmode: 'url', placeholder: 'https://docs.google.com/spreadsheets/…', value: m.reglages[l.cle] || '', autocomplete: 'off', spellcheck: 'false' });
+      champ.addEventListener('change', () => {
+        const v = champ.value.trim();
+        if (v && !/^https:\/\//.test(v)) { toast('Le lien doit commencer par https://', { erreur: true }); return; }
+        Noyau.changerReglages({ [l.cle]: v });
+        toast(v ? `${l.court} : lien enregistré.` : `${l.court} : lien retiré.`);
+      });
+      return h('div', { class: 'champ' }, h('label', { for: id }, `${l.libelle} (facultatif)`), champ);
     });
 
     return h('section', { class: 'carte', id: 'carte-paiements', 'aria-labelledby': 't-paiements' },
@@ -1485,8 +1496,8 @@
       ed === 'nouveau' ? formulaireEcheance(null) : h('div', { class: 'pay-actions' },
         h('button', { type: 'button', class: 'bouton', onclick: () => { S.ech.edition = 'nouveau'; rendre(); } }, icone('plus', 16), 'Ajouter un paiement'),
         manquants && h('button', { type: 'button', class: 'bouton bouton-texte', onclick: async () => { await essayer(() => api('echeances_defaut', { methode: 'POST' })); rendre(); } }, 'Ajouter le calendrier habituel')),
-      h('div', { class: 'champ' }, h('label', { for: 'lien-comptes' }, 'Lien vers ton état de comptes (facultatif)'), lien,
-        h('p', { class: 'aide' }, 'Affiché au bas du bloc pour ouvrir ton fichier d’un clic. Il est gardé chiffré, comme tes tâches.')));
+      ...champsLiens,
+      h('p', { class: 'aide' }, 'Ces liens s’affichent au bas du bloc « Paiements à venir » pour ouvrir tes fichiers d’un clic. Ils sont gardés chiffrés, comme tes tâches.'));
   }
 
   function formulaireEcheance(ec) {
