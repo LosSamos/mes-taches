@@ -189,10 +189,16 @@
     if (rep.status === 401) { E.jeton = null; await effacer('jeton'); throw new ErreurSync('Reconnexion à Google nécessaire.', 'jeton'); }
     if (rep.status === 404) throw new ErreurSync('Fichier introuvable dans Google Drive.', 'introuvable');
     if (!rep.ok) {
-      let detail = '';
-      try { detail = (await rep.json()).error?.message || ''; } catch { /* rien */ }
+      let detail = '', raisons = '';
+      try {
+        const e = (await rep.json()).error || {};
+        detail = e.message || '';
+        raisons = [e.status, ...(e.errors || []).map((x) => x.reason), ...(e.details || []).map((x) => x.reason)].filter(Boolean).join(' ');
+      } catch { /* rien */ }
       const err = new ErreurSync(`Google Drive a refusé la demande (${rep.status}${detail ? ' : ' + detail : ''}).`, rep.status >= 500 || rep.status === 429 ? 'reseau' : 'drive');
       err.statut = rep.status;
+      err.detail = detail;
+      err.raisons = raisons;
       throw err;
     }
     if (rep.status === 204) return null;

@@ -28,7 +28,7 @@
         .map((c) => ({ id: c.id, nom: c.summaryOverride || c.summary || '', couleur: c.backgroundColor || null, principal: Boolean(c.primary) }));
       return liste.length ? liste : [{ id: 'primary', nom: '', couleur: null, principal: true }];
     } catch (e) {
-      if (e.code === 'jeton' || e.code === 'reseau') throw e;
+      if (e.code === 'jeton' || e.code === 'reseau' || diagnostic(e)[0] === 'erreur' && e.statut === 403 && /pas activée/.test(diagnostic(e)[1])) throw e;
       return [{ id: 'primary', nom: '', couleur: null, principal: true }];
     }
   }
@@ -66,7 +66,7 @@
         return (r.items || []).map((ev) => lireEvenement(ev, ag)).filter(Boolean);
       } catch (e) {
         // Un agenda partagé devenu inaccessible ne doit pas cacher les autres.
-        if (e.code === 'jeton' || e.code === 'reseau' || (e.statut === 403 && ag.principal)) throw e;
+        if (e.code === 'jeton' || e.code === 'reseau' || (e.statut === 403 && (ag.principal || agendas.length === 1))) throw e;
         return [];
       }
     }));
@@ -75,6 +75,17 @@
     for (const ev of resultats.flat()) { if (!vus.has(ev.cle)) { vus.add(ev.cle); tous.push(ev); } }
     tous.sort((x, y) => (x.journee !== y.journee ? (x.journee ? -1 : 1) : x.journee ? x.titre.localeCompare(y.titre, 'fr') : x.debut - y.debut || x.fin - y.fin));
     return tous;
+  }
+
+  /** Traduit un refus de Google en statut clair. */
+  function diagnostic(e) {
+    const texte = `${e.raisons || ''} ${e.detail || ''}`;
+    if (/SERVICE_DISABLED|accessNotConfigured|has not been used|is disabled|n'a pas été utilisée|est désactivée/i.test(texte)) {
+      return ['erreur', 'L’API Google Calendar n’est pas activée dans le projet Google Cloud « Mes taches » (ou elle vient de l’être : Google peut prendre quelques minutes).'];
+    }
+    if (e.statut === 401 || /SCOPE_INSUFFICIENT|insufficientPermissions|insufficient authentication scopes/i.test(texte)) return ['autoriser'];
+    if (e.statut === 403) return ['erreur', `Google Agenda refuse l’accès${e.detail ? ` : « ${e.detail} »` : '.'}`];
+    return ['erreur', 'Google Agenda n’a pas répondu correctement. Réessaie dans un moment.'];
   }
 
   /** Recharge les événements du jour (sans fenêtre Google : si une autorisation manque, le statut le dit). */
@@ -99,8 +110,7 @@
       } catch (e) {
         if (e.code === 'jeton') statut('reconnexion');
         else if (e.code === 'reseau') statut('hors-ligne');
-        else if (e.statut === 403 || e.statut === 401) statut('autoriser');
-        else statut('erreur', 'Google Agenda n’a pas répondu correctement. Réessaie dans un moment.');
+        else statut(...diagnostic(e));
       } finally { enCours = null; }
     })();
     return enCours;
