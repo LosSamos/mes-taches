@@ -472,6 +472,29 @@
       return { ok: true };
     },
 
+    /** Déplace une tâche vers un autre projet (2.17). `ids` (facultatif) : nouvel ordre complet des tâches du projet cible. */
+    tache_deplacer(e) {
+      const t = tacheDe(e.id);
+      const p = projetDe(e.projet_id);
+      if (p.archive_le) throw new ErreurNoyau('Ce projet est archivé.');
+      if (t.projet_id !== p.id) {
+        const ordres = Object.values(M.taches).filter((x) => x.projet_id === p.id).map((x) => x.ordre);
+        t.projet_id = p.id;
+        t.ordre = (ordres.length ? Math.max(...ordres) : -1) + 1;
+        toucher(t);
+        for (const im of Object.values(M.images || {})) if (im.tache_id === t.id && im.projet_id !== p.id) { im.projet_id = p.id; toucher(im); }
+      }
+      if (Array.isArray(e.ids)) {
+        if (e.ids.length > 5000) throw new ErreurNoyau('Ordre invalide.');
+        e.ids.forEach((id, i) => {
+          const x = M.taches[id];
+          if (x && x.projet_id === p.id && x.ordre !== i) { x.ordre = i; toucher(x); }
+        });
+      }
+      changer();
+      return { tache: versTache(t) };
+    },
+
     projet_archiver(e) {
       const p = projetDe(e.id);
       const m = maintenant();
@@ -1261,7 +1284,7 @@
    * ======================================================= */
 
   window.Noyau = {
-    VERSION_APP: '2.16.3',
+    VERSION_APP: '2.17.0',
     GROUPEMENTS, COULEURS, COULEURS_PROJET, PALETTE_PROJET, FAMILLES_PROJET, ErreurNoyau,
     get groupements() { return groupementsAffiches(); },
     JOURS_IMAGES: 31,

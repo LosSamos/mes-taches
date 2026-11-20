@@ -1041,3 +1041,8 @@ a.aj-ev-titre:hover { text-decoration: underline; }
 /* Liens de finances au bas du bloc Paiements (2.16.3) */
 .pay-liens { display: flex; flex-wrap: wrap; gap: 2px 10px; width: 100%; }
 .pay-liens .aj-lien { margin-left: 0; }
+
+/* ---------- Déplacer une tâche vers un autre projet (2.17) ---------- */
+.tuile.cible-depot { box-shadow: 0 0 0 2px var(--encre), var(--ombre, 0 1px 2px rgba(28, 27, 25, .06)); }
+.tuile.cible-depot .taches:empty { min-height: 36px; }
+.tuile .taches:has(> .tache-place:only-child) { padding-top: 4px; padding-bottom: 4px; }

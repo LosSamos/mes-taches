@@ -41,6 +41,7 @@
     sortie: ['M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4', 'M16 17l5-5-5-5', 'M21 12H9'],
     calendrier: ['M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z', 'M3 10h18', 'M8 3v4', 'M16 3v4'],
     bas: ['M6 9l6 6 6-6'],
+    deplacer: ['M5 12h14', 'M13 6l6 6-6 6', 'M5 5v14'],
     etiquette: ['M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z', 'M7 7h.01'],
     loupe: ['M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z', 'M20 20l-4.2-4.2'],
     signet: ['M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z'],
@@ -1783,7 +1784,7 @@
       : h('button', { type: 'button', class: 'rec-bouton', 'aria-label': 'Répéter cette tâche', title: 'Répéter cette tâche', 'aria-haspopup': 'dialog', 'aria-expanded': 'false', onclick: (e) => menuRecurrence(e.currentTarget, t) },
         icone('recurrence', 14, 2.2));
 
-    const prise = h('button', { type: 'button', class: 'prise-tache', 'aria-label': `Déplacer « ${texteBrut(t.texte).slice(0, 60)} » (flèches haut et bas)`, title: 'Glisser pour changer l’ordre' }, icone('poignee', 14));
+    const prise = h('button', { type: 'button', class: 'prise-tache', 'aria-label': `Déplacer « ${texteBrut(t.texte).slice(0, 60)} » (flèches haut et bas)`, title: 'Glisser pour changer l’ordre ou de projet' }, icone('poignee', 14));
     const li = h('li', { class: 'tache', 'data-id': t.id },
       prise,
       h('input', { type: 'checkbox', 'aria-label': `Archiver : ${texteBrut(t.texte)}`, onchange: (e) => finaliser(t, li, e.currentTarget) }),
@@ -1805,6 +1806,7 @@
       h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); editerLienTache(t, ancre); } }, icone('lien'), t.lien ? 'Modifier le lien…' : 'Ajouter un lien…'),
       h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); menuRecurrence(ancre, t); } }, icone('recurrence'), t.recurrence ? 'Modifier la répétition…' : 'Répéter…'),
       h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); menuCouleurTache(ancre, t); } }, h('span', { class: 'coche' }, h('span', { class: 'point fond-couleur', 'data-couleur': t.couleur || 'blanc' })), 'Couleur…'),
+      h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); menuDeplacerTache(ancre, t); } }, icone('deplacer'), 'Déplacer vers un autre projet…'),
       h('div', { class: 'menu-separateur', role: 'separator' }),
       h('button', { type: 'button', class: 'menu-item danger', role: 'menuitem', onclick: () => { fermerPopover(); supprimerTache(t); } }, icone('corbeille'), 'Supprimer la tâche')),
     { titre: 'Actions de la tâche', classe: 'popover-menu' });
@@ -1843,7 +1845,10 @@
     if (e.button !== 0 || editionActive) return;
     e.preventDefault();
     fermerPopover();
-    const liste = li.parentElement;
+    const origine = li.parentElement;
+    let liste = origine;
+    let tuileCible = null;
+    let dernierX = e.clientX, dernierY = e.clientY, defile = 0;
     const r = li.getBoundingClientRect();
     const decalage = e.clientY - r.top;
     const place = h('li', { class: 'tache-place', 'aria-hidden': 'true' });
@@ -1854,6 +1859,16 @@
     Object.assign(li.style, { width: `${r.width}px`, left: `${r.left}px`, top: `${r.top}px` });
     document.body.classList.add('glisse-en-cours');
     prise.setPointerCapture(e.pointerId);
+    // 2.17 : la tâche peut changer de projet en passant au-dessus d'une autre tuile.
+    const changerListe = (x, y) => {
+      const sous = document.elementFromPoint(x, y)?.closest('.tuile[data-id]:not(.tuile-repliee)');
+      const ul = sous?.querySelector(':scope > .taches');
+      if (!ul || ul === liste) return;
+      liste = ul;
+      tuileCible?.classList.remove('cible-depot');
+      tuileCible = sous.dataset.id !== projetId ? sous : null;
+      tuileCible?.classList.add('cible-depot');
+    };
     const placer = (y) => {
       let cible = null;
       for (const a of liste.querySelectorAll(':scope > .tache[data-id]:not(.en-glisse)')) {
@@ -1863,23 +1878,106 @@
       if (cible) { if (place.nextElementSibling !== cible) liste.insertBefore(place, cible); }
       else {
         const derniere = [...liste.querySelectorAll(':scope > .tache[data-id]:not(.en-glisse)')].pop();
-        if (derniere && derniere.nextElementSibling !== place) derniere.after(place);
+        if (derniere) { if (derniere.nextElementSibling !== place) derniere.after(place); }
+        else if (place.parentElement !== liste) liste.append(place);
       }
     };
-    const bouger = (ev) => { li.style.top = `${ev.clientY - decalage}px`; placer(ev.clientY); };
+    const suivre = () => { changerListe(dernierX, dernierY); placer(dernierY); };
+    // Défilement automatique près du haut ou du bas de l'écran (pour atteindre une tuile éloignée).
+    const boucle = () => {
+      const marge = 70, v = dernierY < marge ? -(marge - dernierY) / 4 : dernierY > innerHeight - marge ? (dernierY - innerHeight + marge) / 4 : 0;
+      if (v) { scrollBy(0, Math.max(-22, Math.min(22, v))); suivre(); }
+      defile = requestAnimationFrame(boucle);
+    };
+    defile = requestAnimationFrame(boucle);
+    const bouger = (ev) => {
+      dernierX = ev.clientX; dernierY = ev.clientY;
+      li.style.top = `${ev.clientY - decalage}px`;
+      suivre();
+    };
     const finir = () => {
+      cancelAnimationFrame(defile);
       prise.removeEventListener('pointermove', bouger);
       document.body.classList.remove('glisse-en-cours');
+      tuileCible?.classList.remove('cible-depot');
       liste.insertBefore(li, place);
       place.remove();
       li.classList.remove('en-glisse');
       li.style.width = li.style.left = li.style.top = '';
       const apres = [...liste.querySelectorAll(':scope > .tache[data-id]')].map((x) => x.dataset.id);
+      const cibleId = liste.closest('.tuile[data-id]')?.dataset.id;
+      if (cibleId && cibleId !== projetId) {
+        const t = S.taches.find((x) => x.id === li.dataset.id);
+        if (t) deplacerTache(t, cibleId, apres);
+        return;
+      }
       if (apres.join() !== avant.join()) ordonnerTaches(projetId, apres);
     };
     prise.addEventListener('pointermove', bouger);
     prise.addEventListener('pointerup', finir, { once: true });
     prise.addEventListener('pointercancel', finir, { once: true });
+  }
+
+  /** Déplace une tâche vers un autre projet (2.17), avec « Annuler ».
+      `idsVisibles` : ordre voulu des tâches visibles du projet cible (glisser) ; sinon la tâche va à la fin. */
+  async function deplacerTache(t, cibleId, idsVisibles = null) {
+    const origineId = t.projet_id;
+    const cible = projetPar(cibleId);
+    if (!cible || cibleId === origineId) return;
+    const ordreOrigine = tachesDe(origineId).map((x) => x.id);
+    let ids = null;
+    if (idsVisibles) {
+      const tous = [...tachesDe(cibleId).map((x) => x.id).filter((id) => id !== t.id), t.id];
+      const visibles = new Set(idsVisibles);
+      const file = [...idsVisibles];
+      ids = tous.map((id) => (visibles.has(id) ? file.shift() : id));
+    }
+    const r = await essayer(() => api('tache_deplacer', { methode: 'POST', donnees: { id: t.id, projet_id: cibleId, ids } }));
+    if (!r) { rendre(); return; }
+    const local = S.taches.find((x) => x.id === t.id);
+    if (local) { local.projet_id = cibleId; local.ordre = r.tache.ordre; }
+    if (ids) ids.forEach((id, i) => { const x = S.taches.find((y) => y.id === id); if (x) x.ordre = i; });
+    rendre();
+    const visible = Boolean($(`.tache[data-id="${CSS.escape(t.id)}"]`));
+    const court = texteBrut(t.texte).slice(0, 32) + (texteBrut(t.texte).length > 32 ? '…' : '');
+    toast(`« ${court} » → ${cible.titre}${visible ? '' : ' (masqué par le filtre)'}`, {
+      annuler: async () => {
+        const rr = await essayer(() => api('tache_deplacer', { methode: 'POST', donnees: { id: t.id, projet_id: origineId, ids: ordreOrigine } }));
+        if (!rr) return;
+        const x = S.taches.find((y) => y.id === t.id);
+        if (x) x.projet_id = origineId;
+        ordreOrigine.forEach((id, i) => { const y = S.taches.find((z) => z.id === id); if (y) y.ordre = i; });
+        rendre();
+      },
+    });
+  }
+
+  function menuDeplacerTache(ancre, t) {
+    const champ = h('input', { type: 'search', class: 'champ-petit menu-recherche', placeholder: 'Trouver un projet', 'aria-label': 'Trouver un projet', autocomplete: 'off' });
+    const zone = h('div', { class: 'menu-defile' });
+    const possibles = S.projets.filter((p) => p.id !== t.projet_id && p.couleur !== 'gris' && !p.archive_le);
+    const remplir = () => {
+      const q = sansAccents(champ.value.trim());
+      const projets = possibles.filter((p) => !q || sansAccents(p.titre).includes(q) || sansAccents(p.groupement).includes(q));
+      const items = [];
+      for (const g of S.groupements) {
+        const liste = projets.filter((p) => p.groupement === g).sort((a, b) => a.titre.localeCompare(b.titre, 'fr', { numeric: true }));
+        if (!liste.length) continue;
+        items.push(h('div', { class: 'menu-groupe' }, g));
+        for (const p of liste) {
+          items.push(h('button', { type: 'button', class: 'menu-item', role: 'menuitem', onclick: () => { fermerPopover(); deplacerTache(t, p.id); } },
+            h('span', { class: 'coche' }, p.couleur !== 'blanc' ? h('span', { class: 'point fond-couleur', 'data-couleur': p.couleur, 'aria-hidden': 'true' }) : h('span', { class: 'point point-vide', 'aria-hidden': 'true' })),
+            h('span', { class: 'menu-libelle' }, p.titre), h('span', { class: 'menu-compte' }, String(tachesDe(p.id).length))));
+        }
+      }
+      if (!items.length) items.push(h('p', { class: 'aj-vide menu-aucun' }, possibles.length ? 'Aucun projet.' : 'Aucun autre projet en cours.'));
+      zone.replaceChildren(...items);
+    };
+    champ.addEventListener('input', remplir);
+    champ.addEventListener('keydown', (e) => { if (e.key === 'Enter') { const b = zone.querySelector('.menu-item'); if (b) { e.preventDefault(); b.click(); } } });
+    remplir();
+    ouvrirPopover(ancre, h('div', { class: 'menu-liste menu-filtre menu-projets', role: 'menu' }, possibles.length > 6 ? champ : null, zone), { classe: 'popover-menu', titre: 'Déplacer vers' });
+    if (possibles.length > 6) champ.focus();
   }
 
   function tacheAuClavier(e, t) {
